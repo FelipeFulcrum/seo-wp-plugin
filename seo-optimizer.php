@@ -29,6 +29,7 @@ class SEO_Optimizer {
      */
     public function __construct() {
         add_action('init', array($this, 'init'));
+        // add_action('admin_init', array($this, 'register_api_settings'));
         add_action('admin_menu', array($this, 'add_admin_menu'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_scripts'));
         add_action('wp_ajax_get_post_fields', array($this, 'ajax_get_post_fields'));
@@ -47,6 +48,35 @@ class SEO_Optimizer {
      */
     public function init() {
         load_plugin_textdomain('seo-optimizer', false, dirname(plugin_basename(__FILE__)) . '/languages/');
+    }
+    
+    /**
+     * Register API settings
+     */
+    public function register_api_settings() {
+        register_setting('seo_optimizer_api_settings', 'ai_model_provider', array(
+            'sanitize_callback' => 'sanitize_text_field'
+        ));
+        register_setting('seo_optimizer_api_settings', 'ai_api_key', array(
+            'sanitize_callback' => 'sanitize_text_field'
+        ));
+        register_setting('seo_optimizer_api_settings', 'ai_model_id', array(
+            'sanitize_callback' => 'sanitize_text_field'
+        ));
+        
+        add_settings_section(
+            'seo_optimizer_api_section',
+            __('AI Model Configuration', 'seo-optimizer'),
+            array($this, 'api_section_callback'),
+            'seo_optimizer_api_settings'
+        );
+    }
+    
+    /**
+     * API section callback
+     */
+    public function api_section_callback() {
+        echo '<p>' . __('Configure your AI model provider and API settings below.', 'seo-optimizer') . '</p>';
     }
     
     /**
@@ -85,20 +115,11 @@ class SEO_Optimizer {
         
         add_submenu_page(
             'seo-optimizer',
-            __('Implementation', 'seo-optimizer'),
-            __('Implementation', 'seo-optimizer'),
+            __('API Integration', 'seo-optimizer'),
+            __('API Integration', 'seo-optimizer'),
             'manage_options',
-            'seo-optimizer-implementation',
-            array($this, 'implementation_page')
-        );
-        
-        add_submenu_page(
-            'seo-optimizer',
-            __('Performance', 'seo-optimizer'),
-            __('Performance', 'seo-optimizer'),
-            'manage_options',
-            'seo-optimizer-performance',
-            array($this, 'performance_page')
+            'seo-optimizer-api-integration',
+            array($this, 'api_integration_page')
         );
     }
     
@@ -404,7 +425,7 @@ class SEO_Optimizer {
         $seo_pages = array(
             'toplevel_page_seo-optimizer',
             'seo-optimizer_page_seo-optimizer-analysis',
-            'seo-optimizer_page_seo-optimizer-implementation',
+            'seo-optimizer_page_seo-optimizer-api-integration',
             'seo-optimizer_page_seo-optimizer-performance'
         );
         
@@ -480,39 +501,6 @@ class SEO_Optimizer {
             </script>
         </head>
         <body class="bg-gray-50 min-h-screen">
-            <!-- Top Navigation Bar -->
-            <nav class="bg-white shadow-sm border-b border-gray-200">
-                <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div class="flex justify-between items-center h-16">
-                        <!-- Logo -->
-                        <div class="flex items-center">
-                            <div class="flex-shrink-0">
-                                <h1 class="text-2xl font-bold text-blue-primary">SEO Optimizer</h1>
-                            </div>
-                        </div>
-                        
-                        <!-- Navigation Items -->
-                        <div class="hidden md:block">
-                            <div class="ml-10 flex items-baseline space-x-4">
-                                <a href="#" class="bg-blue-primary text-white px-3 py-2 rounded-md text-sm font-medium">Dashboard</a>
-                                <a href="#" class="text-gray-700 hover:text-blue-primary px-3 py-2 rounded-md text-sm font-medium">Analysis</a>
-                                <a href="#" class="text-gray-700 hover:text-blue-primary px-3 py-2 rounded-md text-sm font-medium">Implementation</a>
-                                <a href="#" class="text-gray-700 hover:text-blue-primary px-3 py-2 rounded-md text-sm font-medium">Performance</a>
-                            </div>
-                        </div>
-                        
-                        <!-- User Profile -->
-                        <div class="flex items-center">
-                            <div class="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
-                                <svg class="w-5 h-5 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"></path>
-                                </svg>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </nav>
-
             <!-- Main Content -->
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 <!-- Header Section -->
@@ -1151,38 +1139,6 @@ class SEO_Optimizer {
             </script>
         </head>
         <body class="bg-gray-50 min-h-screen">
-            <!-- Top Navigation Bar -->
-            <nav class="bg-white shadow-sm border-b border-gray-200">
-                <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div class="flex justify-between items-center h-16">
-                        <!-- Logo -->
-                        <div class="flex items-center">
-                            <div class="flex-shrink-0">
-                                <h1 class="text-2xl font-bold text-blue-primary">SEO Optimizer</h1>
-                            </div>
-                        </div>
-                        
-                        <!-- Navigation Items -->
-                        <div class="hidden md:block">
-                            <div class="ml-10 flex items-baseline space-x-4">
-                                <a href="#" class="text-gray-700 hover:text-blue-primary px-3 py-2 rounded-md text-sm font-medium">Dashboard</a>
-                                <a href="#" class="bg-blue-primary text-white px-3 py-2 rounded-md text-sm font-medium">Analysis</a>
-                                <a href="#" class="text-gray-700 hover:text-blue-primary px-3 py-2 rounded-md text-sm font-medium">Implementation</a>
-                                <a href="#" class="text-gray-700 hover:text-blue-primary px-3 py-2 rounded-md text-sm font-medium">Performance</a>
-                            </div>
-                        </div>
-                        
-                        <!-- User Profile -->
-                        <div class="flex items-center">
-                            <div class="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
-                                <svg class="w-5 h-5 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"></path>
-                                </svg>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </nav>
 
             <!-- Breadcrumb -->
             <div class="bg-white border-b border-gray-200">
@@ -1214,7 +1170,7 @@ class SEO_Optimizer {
                                 <span>Export Results</span>
                             </button>
                             <button class="bg-blue-primary text-white px-4 py-2 rounded-lg hover:bg-blue-dark flex items-center space-x-2">
-                                <span>Implementation</span>
+                                <span>API Integration</span>
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
                                 </svg>
@@ -1350,46 +1306,290 @@ class SEO_Optimizer {
     }
     
     /**
-     * Implementation page callback
+     * API Integration page callback
      */
-    public function implementation_page() {
+    public function api_integration_page() {
+        // Handle form submission
+        if (isset($_POST['submit']) && wp_verify_nonce($_POST['_wpnonce'], 'ai_config_nonce')) {
+            if (isset($_POST['ai_model_provider'])) {
+                update_option('ai_model_provider', sanitize_text_field($_POST['ai_model_provider']));
+            }
+            if (isset($_POST['ai_api_key'])) {
+                update_option('ai_api_key', sanitize_text_field($_POST['ai_api_key']));
+            }
+            if (isset($_POST['ai_model_id'])) {
+                update_option('ai_model_id', sanitize_text_field($_POST['ai_model_id']));
+            }
+            echo '<div class="notice notice-success"><p>' . __('Settings saved successfully!', 'seo-optimizer') . '</p></div>';
+        }
+        
         ?>
         <div class="wrap">
             <h1><?php echo esc_html(get_admin_page_title()); ?></h1>
             
             <div class="seo-optimizer-container">
                 <div class="seo-optimizer-form">
-                    <h2><?php _e('Implementation', 'seo-optimizer'); ?></h2>
-                    <p><?php _e('This page will contain SEO implementation tools and features.', 'seo-optimizer'); ?></p>
+                    <h2><?php _e('API Integration', 'seo-optimizer'); ?></h2>
+                    <p><?php _e('Configure and manage API integrations for enhanced SEO functionality.', 'seo-optimizer'); ?></p>
                     
-                    <div class="notice notice-info">
-                        <p><?php _e('Implementation functionality coming soon!', 'seo-optimizer'); ?></p>
+                    <!-- AI Model Configuration Panel -->
+                    <div class="ai-config-panel" style="margin: 20px 0; border: 1px solid #ddd; border-radius: 8px; padding: 20px; background: #fff;">
+                        <h3 style="margin-top: 0; color: #333;"><?php _e('AI Model Configuration', 'seo-optimizer'); ?></h3>
+                        <p style="color: #666; margin-bottom: 20px;"><?php _e('Configure your preferred AI model provider and settings for content enhancement and meta generation.', 'seo-optimizer'); ?></p>
+                        
+                        <form method="post" action="" id="ai-config-form">
+                            <?php wp_nonce_field('ai_config_nonce'); ?>
+                            <?php
+                            // settings_fields('seo_optimizer_api_settings');
+                            // do_settings_sections('seo_optimizer_api_settings');
+                            ?>
+                            
+                            <div class="form-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+                                <!-- AI Model Provider Selection -->
+                                <div class="form-group">
+                                    <label for="ai_model_provider" style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">
+                                        <?php _e('AI Model Provider', 'seo-optimizer'); ?>
+                                    </label>
+                                    <select id="ai_model_provider" 
+                                            name="ai_model_provider" 
+                                            class="regular-text" 
+                                            style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"
+                                            onchange="updateModelInfo()">
+                                        <option value=""><?php _e('Select AI Model Provider', 'seo-optimizer'); ?></option>
+                                        <option value="openai" <?php selected(get_option('ai_model_provider', ''), 'openai'); ?>>
+                                            <?php _e('OpenAI', 'seo-optimizer'); ?>
+                                        </option>
+                                        <option value="grok" <?php selected(get_option('ai_model_provider', ''), 'grok'); ?>>
+                                            <?php _e('Grok (xAI)', 'seo-optimizer'); ?>
+                                        </option>
+                                        <option value="anthropic" <?php selected(get_option('ai_model_provider', ''), 'anthropic'); ?>>
+                                            <?php _e('Anthropic (Claude)', 'seo-optimizer'); ?>
+                                        </option>
+                                        <option value="gemini" <?php selected(get_option('ai_model_provider', ''), 'gemini'); ?>>
+                                            <?php _e('Google Gemini', 'seo-optimizer'); ?>
+                                        </option>
+                                    </select>
+                                    <p class="description" style="margin-top: 5px; font-size: 12px; color: #666;">
+                                        <?php _e('Choose your preferred AI model provider', 'seo-optimizer'); ?>
+                                    </p>
+                    </div>
+                                
+                                <!-- Model ID Input -->
+                                <div class="form-group">
+                                    <label for="ai_model_id" style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">
+                                        <?php _e('Model ID', 'seo-optimizer'); ?>
+                                    </label>
+                                    <input type="text" 
+                                           id="ai_model_id" 
+                                           name="ai_model_id" 
+                                           value="<?php echo esc_attr(get_option('ai_model_id', '')); ?>" 
+                                           class="regular-text" 
+                                           style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"
+                                           placeholder="<?php _e('e.g., gpt-5, gpt-5-mini, gpt-4, claude-3-sonnet, gemini-pro', 'seo-optimizer'); ?>" />
+                                    <p class="description" style="margin-top: 5px; font-size: 12px; color: #666;">
+                                        <?php _e('Specific model version to use (optional)', 'seo-optimizer'); ?>
+                                    </p>
+                </div>
+            </div>
+                            
+                            <!-- API Key Input -->
+                            <div class="form-group" style="margin-bottom: 20px;">
+                                <label for="ai_api_key" style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">
+                                    <?php _e('API Key', 'seo-optimizer'); ?>
+                                </label>
+                                <input type="password" 
+                                       id="ai_api_key" 
+                                       name="ai_api_key" 
+                                       value="<?php echo esc_attr(get_option('ai_api_key', '')); ?>" 
+                                       class="regular-text" 
+                                       style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"
+                                       placeholder="<?php _e('Enter your API key', 'seo-optimizer'); ?>" />
+                                <p class="description" style="margin-top: 5px; font-size: 12px; color: #666;">
+                                    <?php _e('Your API key for the selected provider', 'seo-optimizer'); ?>
+                                </p>
+        </div>
+                            
+                            <!-- Provider Information Panel -->
+                            <div id="provider-info" style="background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 6px; padding: 15px; margin-bottom: 20px; display: none;">
+                                <h4 style="margin-top: 0; color: #495057;"><?php _e('Provider Information', 'seo-optimizer'); ?></h4>
+                                <div id="provider-details"></div>
+                            </div>
+                            
+                            <!-- Save Button -->
+                            <div class="form-actions" style="text-align: right;">
+                                <?php submit_button(__('Save AI Configuration', 'seo-optimizer'), 'primary', 'submit', false, array('style' => 'padding: 10px 20px; font-size: 14px;')); ?>
+                            </div>
+                        </form>
+                    </div>
+                    
+                    <!-- API Status Section -->
+                    <div class="api-status-section" style="margin: 20px 0;">
+                        <h3><?php _e('API Status', 'seo-optimizer'); ?></h3>
+                        <div class="api-status-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px;">
+                            <div class="api-status-card" style="border: 1px solid #ddd; padding: 15px; border-radius: 5px;">
+                                <h4><?php _e('AI Model Provider', 'seo-optimizer'); ?></h4>
+                                <div class="status-indicator">
+                                    <?php 
+                                    $provider = get_option('ai_model_provider', '');
+                                    $api_key = get_option('ai_api_key', '');
+                                    if (!empty($provider) && !empty($api_key)): 
+                                    ?>
+                                        <span style="color: #46b450;">✓ <?php echo esc_html(ucfirst($provider)); ?> <?php _e('Configured', 'seo-optimizer'); ?></span>
+                                    <?php else: ?>
+                                        <span style="color: #dc3232;">✗ <?php _e('Not Configured', 'seo-optimizer'); ?></span>
+                                    <?php endif; ?>
+                                </div>
+                                <p class="description">
+                                    <?php _e('AI model for content enhancement and meta generation', 'seo-optimizer'); ?>
+                                </p>
+                            </div>
+                            
+                            <div class="api-status-card" style="border: 1px solid #ddd; padding: 15px; border-radius: 5px;">
+                                <h4><?php _e('SEO Meta API', 'seo-optimizer'); ?></h4>
+                                <div class="status-indicator">
+                                    <span style="color: #46b450;">✓ <?php _e('Active', 'seo-optimizer'); ?></span>
+                                </div>
+                                <p class="description">
+                                    <?php _e('Internal API for meta tag optimization', 'seo-optimizer'); ?>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- API Features Section -->
+                    <div class="api-features-section" style="margin: 20px 0;">
+                        <h3><?php _e('Available API Features', 'seo-optimizer'); ?></h3>
+                        <div class="features-list" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px;">
+                            <div class="feature-card" style="border: 1px solid #ddd; padding: 15px; border-radius: 5px;">
+                                <h4><?php _e('AI Content Enhancement', 'seo-optimizer'); ?></h4>
+                                <p><?php _e('Automatically enhance your content using AI language models for better SEO performance.', 'seo-optimizer'); ?></p>
+                                <div class="feature-status">
+                                    <?php if (!empty(get_option('ai_api_key', ''))): ?>
+                                        <span style="color: #46b450;">✓ <?php _e('Enabled', 'seo-optimizer'); ?></span>
+                                    <?php else: ?>
+                                        <span style="color: #dc3232;">✗ <?php _e('Requires API Key', 'seo-optimizer'); ?></span>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                            
+                            <div class="feature-card" style="border: 1px solid #ddd; padding: 15px; border-radius: 5px;">
+                                <h4><?php _e('Smart Meta Generation', 'seo-optimizer'); ?></h4>
+                                <p><?php _e('Generate optimized meta titles and descriptions using AI analysis of your content.', 'seo-optimizer'); ?></p>
+                                <div class="feature-status">
+                                    <?php if (!empty(get_option('ai_api_key', ''))): ?>
+                                        <span style="color: #46b450;">✓ <?php _e('Enabled', 'seo-optimizer'); ?></span>
+                                    <?php else: ?>
+                                        <span style="color: #dc3232;">✗ <?php _e('Requires API Key', 'seo-optimizer'); ?></span>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                            
+                            <div class="feature-card" style="border: 1px solid #ddd; padding: 15px; border-radius: 5px;">
+                                <h4><?php _e('Content Summarization', 'seo-optimizer'); ?></h4>
+                                <p><?php _e('Automatically generate content summaries to improve readability and SEO.', 'seo-optimizer'); ?></p>
+                                <div class="feature-status">
+                                    <?php if (!empty(get_option('ai_api_key', ''))): ?>
+                                        <span style="color: #46b450;">✓ <?php _e('Enabled', 'seo-optimizer'); ?></span>
+                                    <?php else: ?>
+                                        <span style="color: #dc3232;">✗ <?php _e('Requires API Key', 'seo-optimizer'); ?></span>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- API Usage Instructions -->
+                    <div class="api-instructions-section" style="margin: 20px 0;">
+                        <h3><?php _e('Getting Started', 'seo-optimizer'); ?></h3>
+                        <div class="instructions-content" style="background: #f9f9f9; padding: 15px; border-radius: 5px;">
+                            <ol>
+                                <li><?php _e('Select your preferred AI model provider from the dropdown above', 'seo-optimizer'); ?></li>
+                                <li><?php _e('Obtain an API key from your chosen provider:', 'seo-optimizer'); ?>
+                                    <ul style="margin-top: 10px;">
+                                        <li><strong>OpenAI:</strong> <a href="https://platform.openai.com/api-keys" target="_blank"><?php _e('Get OpenAI API Key', 'seo-optimizer'); ?></a></li>
+                                        <li><strong>Grok (xAI):</strong> <a href="https://console.x.ai/" target="_blank"><?php _e('Get Grok API Key', 'seo-optimizer'); ?></a></li>
+                                        <li><strong>Anthropic:</strong> <a href="https://console.anthropic.com/" target="_blank"><?php _e('Get Claude API Key', 'seo-optimizer'); ?></a></li>
+                                        <li><strong>Google Gemini:</strong> <a href="https://makersuite.google.com/app/apikey" target="_blank"><?php _e('Get Gemini API Key', 'seo-optimizer'); ?></a></li>
+                                    </ul>
+                                </li>
+                                <li><?php _e('Enter your API key and optional model ID in the configuration form', 'seo-optimizer'); ?></li>
+                                <li><?php _e('Save the settings to activate AI-powered features', 'seo-optimizer'); ?></li>
+                                <li><?php _e('Use the Analysis page to generate AI-powered SEO recommendations', 'seo-optimizer'); ?></li>
+                            </ol>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-        <?php
-    }
-    
-    /**
-     * Performance page callback
-     */
-    public function performance_page() {
-        ?>
-        <div class="wrap">
-            <h1><?php echo esc_html(get_admin_page_title()); ?></h1>
+        
+        <script>
+        function updateModelInfo() {
+            const provider = document.getElementById('ai_model_provider').value;
+            const infoPanel = document.getElementById('provider-info');
+            const detailsDiv = document.getElementById('provider-details');
             
-            <div class="seo-optimizer-container">
-                <div class="seo-optimizer-form">
-                    <h2><?php _e('Performance', 'seo-optimizer'); ?></h2>
-                    <p><?php _e('This page will contain SEO performance monitoring and optimization tools.', 'seo-optimizer'); ?></p>
-                    
-                    <div class="notice notice-info">
-                        <p><?php _e('Performance functionality coming soon!', 'seo-optimizer'); ?></p>
+            if (!provider) {
+                infoPanel.style.display = 'none';
+                return;
+            }
+            
+            const providerInfo = {
+                'openai': {
+                    name: 'OpenAI',
+                    description: 'Advanced language models including GPT-5, GPT-5-mini, GPT-4, GPT-3.5, and more.',
+                    defaultModel: 'gpt-5',
+                    website: 'https://openai.com',
+                    pricing: 'Pay-per-token pricing'
+                },
+                'grok': {
+                    name: 'Grok (xAI)',
+                    description: 'Elon Musk\'s AI company offering advanced language models.',
+                    defaultModel: 'grok-beta',
+                    website: 'https://x.ai',
+                    pricing: 'Competitive pricing'
+                },
+                'anthropic': {
+                    name: 'Anthropic Claude',
+                    description: 'Constitutional AI focused on helpfulness, harmlessness, and honesty.',
+                    defaultModel: 'claude-3-sonnet-20240229',
+                    website: 'https://anthropic.com',
+                    pricing: 'Pay-per-token pricing'
+                },
+                'gemini': {
+                    name: 'Google Gemini',
+                    description: 'Google\'s multimodal AI model with strong reasoning capabilities.',
+                    defaultModel: 'gemini-pro',
+                    website: 'https://ai.google.dev',
+                    pricing: 'Free tier available'
+                }
+            };
+            
+            const info = providerInfo[provider];
+            if (info) {
+                detailsDiv.innerHTML = `
+                    <div style="margin-bottom: 10px;">
+                        <strong>${info.name}</strong><br>
+                        <span style="color: #666;">${info.description}</span>
                     </div>
-                </div>
-            </div>
-        </div>
+                    <div style="margin-bottom: 10px;">
+                        <strong>Default Model:</strong> <code>${info.defaultModel}</code>
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <strong>Pricing:</strong> ${info.pricing}
+                    </div>
+                    <div>
+                        <a href="${info.website}" target="_blank" style="color: #0073aa;">Visit ${info.name} Website →</a>
+                    </div>
+                `;
+                infoPanel.style.display = 'block';
+            }
+        }
+        
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            updateModelInfo();
+        });
+        </script>
         <?php
     }
     
@@ -1511,11 +1711,11 @@ class SEO_Optimizer {
         $current_content = $post->post_content;
         $clean_content = $this->clean_content_for_ai($current_content);
         
-        // Call OpenAI API to summarize
-        $summary = $this->call_openai_api($clean_content);
+        // Call AI API to summarize
+        $summary = $this->call_ai_api($clean_content);
         
         if (is_wp_error($summary)) {
-            wp_send_json_error(__('OpenAI API Error: ', 'seo-optimizer') . $summary->get_error_message());
+            wp_send_json_error(__('AI API Error: ', 'seo-optimizer') . $summary->get_error_message());
         }
         
         // Append summary to the bottom of the content
@@ -1620,7 +1820,7 @@ class SEO_Optimizer {
         foreach ($paragraphs as $index => $paragraph) {
             $clean_paragraph = $this->clean_content_for_ai($paragraph);
             if (!empty(trim($clean_paragraph))) {
-                $enhanced = $this->call_openai_api_for_enhancement($clean_paragraph);
+                $enhanced = $this->call_ai_api_for_enhancement($clean_paragraph);
                 if (!is_wp_error($enhanced)) {
                     $enhanced_paragraphs[] = array(
                         'original' => $paragraph,
@@ -1856,33 +2056,46 @@ class SEO_Optimizer {
     }
     
     /**
-     * Call OpenAI API to enhance a single paragraph
+     * Call AI API to enhance a single paragraph
      */
-    private function call_openai_api_for_enhancement($content) {
-        $url = 'https://api.openai.com/v1/chat/completions';
+    private function call_ai_api_for_enhancement($content) {
+        $provider = get_option('ai_model_provider', '');
+        $api_key = get_option('ai_api_key', '');
+        $model_id = get_option('ai_model_id', '');
         
-        $data = array(
-            'model' => 'gpt-5-nano',
-            'messages' => array(
-                array(
-                    'role' => 'system',
-                    'content' => 'You are a professional content writer and editor. Your task is to enhance the given paragraph by improving its clarity, flow, and engagement while maintaining the original meaning and tone. Make the text more compelling and better structured without changing the core message.'
-                ),
-                array(
-                    'role' => 'user',
-                    'content' => 'Please enhance this paragraph to make it more engaging and well-written: ' . $content
-                )
-            )
-        );
+        if (empty($provider) || empty($api_key)) {
+            return new WP_Error('no_api_config', __('AI API not configured. Please configure your AI provider in the API Integration page.', 'seo-optimizer'));
+        }
         
-        $headers = array(
-            'Authorization' => 'Bearer ' . $api_key,
-            'Content-Type' => 'application/json'
-        );
+        // Set default model if not specified
+        if (empty($model_id)) {
+            $default_models = array(
+                'openai' => 'gpt-5',
+                'grok' => 'grok-beta',
+                'anthropic' => 'claude-3-sonnet-20240229',
+                'gemini' => 'gemini-pro'
+            );
+            $model_id = isset($default_models[$provider]) ? $default_models[$provider] : 'gpt-5';
+        }
+        
+        // Configure API endpoints and data based on provider
+        $api_config = $this->get_api_config($provider, $api_key, $model_id);
+        
+        // Prepare request data based on provider
+        $request_data = $this->prepare_api_request($provider, $model_id, $content, 'enhancement');
+        
+        // Prepare headers based on provider
+        $headers = $this->prepare_api_headers($api_config);
+        
+        // Prepare URL (some providers need query parameters)
+        $url = $api_config['url'];
+        if ($api_config['auth_type'] === 'query') {
+            $url .= '?key=' . $api_key;
+        }
         
         $response = wp_remote_post($url, array(
             'headers' => $headers,
-            'body' => json_encode($data),
+            'body' => json_encode($request_data),
             'timeout' => 30
         ));
         
@@ -1891,68 +2104,229 @@ class SEO_Optimizer {
         }
         
         $body = wp_remote_retrieve_body($response);
-        $data = json_decode($body, true);
-        
-        if (isset($data['error'])) {
-            return new WP_Error('openai_error', $data['error']['message']);
-        }
-        
-        if (!isset($data['choices'][0]['message']['content'])) {
-            return new WP_Error('openai_error', 'No enhanced text generated');
-        }
-        
-        return trim($data['choices'][0]['message']['content']);
+        return $this->parse_api_response($provider, $body);
     }
     
     /**
-     * Call OpenAI API to summarize content
+     * Call AI API to summarize content
      */
-    private function call_openai_api($content) {
-        $url = 'https://api.openai.com/v1/chat/completions';
+    private function call_ai_api($content) {
+        $provider = get_option('ai_model_provider', '');
+        $api_key = get_option('ai_api_key', '');
+        $model_id = get_option('ai_model_id', '');
         
-        $data = array(
-            'model' => 'gpt-5-nano',
+        if (empty($provider) || empty($api_key)) {
+            return new WP_Error('no_api_config', __('AI API not configured. Please configure your AI provider in the API Integration page.', 'seo-optimizer'));
+        }
+        
+        // Set default model if not specified
+        if (empty($model_id)) {
+            $default_models = array(
+                'openai' => 'gpt-5',
+                'grok' => 'grok-beta',
+                'anthropic' => 'claude-3-sonnet-20240229',
+                'gemini' => 'gemini-pro'
+            );
+            $model_id = isset($default_models[$provider]) ? $default_models[$provider] : 'gpt-5';
+        }
+        
+        // Configure API endpoints and data based on provider
+        $api_config = $this->get_api_config($provider, $api_key, $model_id);
+        
+        // Prepare request data based on provider
+        $request_data = $this->prepare_api_request($provider, $model_id, $content, 'summarization');
+        
+        // Prepare headers based on provider
+        $headers = $this->prepare_api_headers($api_config);
+        
+        // Prepare URL (some providers need query parameters)
+        $url = $api_config['url'];
+        if ($api_config['auth_type'] === 'query') {
+            $url .= '?key=' . $api_key;
+        }
+        
+        $response = wp_remote_post($url, array(
+            'headers' => $headers,
+            'body' => json_encode($request_data),
+            'timeout' => 30
+        ));
+        
+        if (is_wp_error($response)) {
+            return $response;
+        }
+        
+        $body = wp_remote_retrieve_body($response);
+        return $this->parse_api_response($provider, $body);
+    }
+    
+    /**
+     * Get API configuration based on provider
+     */
+    private function get_api_config($provider, $api_key, $model_id) {
+        $configs = array(
+            'openai' => array(
+                'url' => 'https://api.openai.com/v1/chat/completions',
+                'auth_type' => 'bearer',
+                'api_key' => $api_key
+            ),
+            'grok' => array(
+                'url' => 'https://api.x.ai/v1/chat/completions',
+                'auth_type' => 'bearer',
+                'api_key' => $api_key
+            ),
+            'anthropic' => array(
+                'url' => 'https://api.anthropic.com/v1/messages',
+                'auth_type' => 'x-api-key',
+                'api_key' => $api_key
+            ),
+            'gemini' => array(
+                'url' => 'https://generativelanguage.googleapis.com/v1beta/models/' . $model_id . ':generateContent',
+                'auth_type' => 'query',
+                'api_key' => $api_key
+            )
+        );
+        
+        return isset($configs[$provider]) ? $configs[$provider] : $configs['openai'];
+    }
+    
+    /**
+     * Prepare API request data based on provider
+     */
+    private function prepare_api_request($provider, $model_id, $content, $task_type) {
+        $system_prompts = array(
+            'enhancement' => 'You are a professional content writer and editor. Your task is to enhance the given paragraph by improving its clarity, flow, and engagement while maintaining the original meaning and tone. Make the text more compelling and better structured without changing the core message.',
+            'summarization' => 'You are a helpful assistant that creates concise, informative summaries of content. Summarize the following content in 2-3 sentences, focusing on the main points and key takeaways.'
+        );
+        
+        $system_prompt = isset($system_prompts[$task_type]) ? $system_prompts[$task_type] : $system_prompts['enhancement'];
+        
+        switch ($provider) {
+            case 'openai':
+            case 'grok':
+                return array(
+                    'model' => $model_id,
             'messages' => array(
                 array(
                     'role' => 'system',
-                    'content' => 'You are a helpful assistant that creates concise, informative summaries of content. Summarize the following content in 2-3 sentences, focusing on the main points and key takeaways.'
+                            'content' => $system_prompt
+                        ),
+                        array(
+                            'role' => 'user',
+                            'content' => $task_type === 'enhancement' ? 'Please enhance this paragraph to make it more engaging and well-written: ' . $content : $content
+                        )
+                    ),
+                    'max_tokens' => $task_type === 'enhancement' ? 500 : 150,
+                    'temperature' => 0.7
+                );
+                
+            case 'anthropic':
+                return array(
+                    'model' => $model_id,
+                    'max_tokens' => $task_type === 'enhancement' ? 500 : 150,
+                    'messages' => array(
+                        array(
+                            'role' => 'user',
+                            'content' => $system_prompt . "\n\n" . ($task_type === 'enhancement' ? 'Please enhance this paragraph: ' . $content : 'Please summarize this content: ' . $content)
+                        )
+                    )
+                );
+                
+            case 'gemini':
+                return array(
+                    'contents' => array(
+                        array(
+                            'parts' => array(
+                                array(
+                                    'text' => $system_prompt . "\n\n" . ($task_type === 'enhancement' ? 'Please enhance this paragraph: ' . $content : 'Please summarize this content: ' . $content)
+                                )
+                            )
+                        )
+                    ),
+                    'generationConfig' => array(
+                        'maxOutputTokens' => $task_type === 'enhancement' ? 500 : 150,
+                        'temperature' => 0.7
+                    )
+                );
+                
+            default:
+                return array(
+                    'model' => $model_id,
+                    'messages' => array(
+                        array(
+                            'role' => 'system',
+                            'content' => $system_prompt
                 ),
                 array(
                     'role' => 'user',
                     'content' => $content
                 )
             ),
-            'max_tokens' => 150,
+                    'max_tokens' => 500,
             'temperature' => 0.7
         );
+        }
+    }
         
+    /**
+     * Prepare API headers based on provider
+     */
+    private function prepare_api_headers($api_config) {
         $headers = array(
-            'Authorization' => 'Bearer ' . $api_key,
             'Content-Type' => 'application/json'
         );
         
-        $response = wp_remote_post($url, array(
-            'headers' => $headers,
-            'body' => json_encode($data),
-            'timeout' => 30
-        ));
-        
-        if (is_wp_error($response)) {
-            return $response;
+        switch ($api_config['auth_type']) {
+            case 'bearer':
+                $headers['Authorization'] = 'Bearer ' . $api_config['api_key'];
+                break;
+            case 'x-api-key':
+                $headers['x-api-key'] = $api_config['api_key'];
+                $headers['anthropic-version'] = '2023-06-01';
+                break;
+            case 'query':
+                // For Gemini, API key is passed as query parameter
+                break;
         }
         
-        $body = wp_remote_retrieve_body($response);
-        $data = json_decode($body, true);
+        return $headers;
+    }
+    
+    /**
+     * Parse API response based on provider
+     */
+    private function parse_api_response($provider, $response_body) {
+        $result = json_decode($response_body, true);
         
-        if (isset($data['error'])) {
-            return new WP_Error('openai_error', $data['error']['message']);
+        if (isset($result['error'])) {
+            return new WP_Error('api_error', $result['error']['message']);
         }
         
-        if (!isset($data['choices'][0]['message']['content'])) {
-            return new WP_Error('openai_error', 'No summary generated');
+        switch ($provider) {
+            case 'openai':
+            case 'grok':
+                if (!isset($result['choices'][0]['message']['content'])) {
+                    return new WP_Error('api_error', 'No content generated');
+                }
+                return trim($result['choices'][0]['message']['content']);
+                
+            case 'anthropic':
+                if (!isset($result['content'][0]['text'])) {
+                    return new WP_Error('api_error', 'No content generated');
+                }
+                return trim($result['content'][0]['text']);
+                
+            case 'gemini':
+                if (!isset($result['candidates'][0]['content']['parts'][0]['text'])) {
+                    return new WP_Error('api_error', 'No content generated');
+                }
+                return trim($result['candidates'][0]['content']['parts'][0]['text']);
+                
+            default:
+                if (!isset($result['choices'][0]['message']['content'])) {
+                    return new WP_Error('api_error', 'No content generated');
+                }
+                return trim($result['choices'][0]['message']['content']);
         }
-        
-        return trim($data['choices'][0]['message']['content']);
     }
     
     /**
