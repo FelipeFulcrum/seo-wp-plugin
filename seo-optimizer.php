@@ -38,6 +38,10 @@ class SEO_Optimizer {
         add_action('wp_ajax_replace_paragraph', array($this, 'ajax_replace_paragraph'));
         add_action('wp_ajax_get_page_meta_data', array($this, 'ajax_get_page_meta_data'));
         add_action('wp_ajax_apply_meta_recommendation', array($this, 'ajax_apply_meta_recommendation'));
+        // PageSpeed Actions
+        add_action('wp_ajax_analyze_pagespeed', array($this, 'ajax_analyze_pagespeed'));
+        add_action('wp_ajax_get_pagespeed_trends', array($this, 'ajax_get_pagespeed_trends'));
+        add_action('wp_ajax_clear_pagespeed_cache', array($this, 'ajax_clear_pagespeed_cache'));
         // Add this new line:
         add_action('add_meta_boxes', array($this, 'add_meta_boxes'));
     }
@@ -1222,6 +1226,108 @@ class SEO_Optimizer {
                         </div>
                     </div>
                 </div>
+
+                <!-- PageSpeed Analysis Section -->
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+                    <div class="mb-6">
+                        <h2 class="text-2xl font-bold text-gray-900 mb-2">PageSpeed Insights</h2>
+                        <p class="text-gray-600">Analyze your website's performance</p>
+                    </div>
+
+                    <!-- URL Input and Analysis Controls -->
+                    <div class="flex gap-4 mb-6">
+                        <input type="url" id="pagespeed-url" placeholder="Enter URL to analyze"
+                               class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-primary"
+                               value="<?php echo esc_url(home_url()); ?>">
+                        <button id="analyze-pagespeed" class="bg-blue-primary text-white px-6 py-2 rounded-lg hover:bg-blue-dark flex items-center space-x-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+                            </svg>
+                            <span>Analyze</span>
+                        </button>
+                    </div>
+
+                    <!-- Loading State -->
+                    <div id="pagespeed-loading" class="hidden">
+                        <div class="flex items-center justify-center py-12">
+                            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-primary"></div>
+                            <span class="ml-3 text-gray-600">Analyzing page performance...</span>
+                        </div>
+                    </div>
+
+                    <!-- Results Container -->
+                    <div id="pagespeed-results" class="hidden">
+                        <!-- Score Cards -->
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                            <div class="text-center p-4 border border-gray-200 rounded-lg">
+                                <div id="performance-score" class="text-4xl font-bold mb-2">-</div>
+                                <div class="text-sm text-gray-600">Performance</div>
+                            </div>
+                            <div class="text-center p-4 border border-gray-200 rounded-lg">
+                                <div id="seo-score" class="text-4xl font-bold mb-2">-</div>
+                                <div class="text-sm text-gray-600">SEO</div>
+                            </div>
+                            <div class="text-center p-4 border border-gray-200 rounded-lg">
+                                <div id="accessibility-score" class="text-4xl font-bold mb-2">-</div>
+                                <div class="text-sm text-gray-600">Accessibility</div>
+                            </div>
+                            <div class="text-center p-4 border border-gray-200 rounded-lg">
+                                <div id="best-practices-score" class="text-4xl font-bold mb-2">-</div>
+                                <div class="text-sm text-gray-600">Best Practices</div>
+                            </div>
+                        </div>
+
+                        <!-- Core Web Vitals -->
+                        <div class="mb-6">
+                            <h3 class="text-lg font-semibold text-gray-900 mb-4">Core Web Vitals</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div class="p-4 bg-gray-50 rounded-lg">
+                                    <div class="text-sm text-gray-600 mb-1">Largest Contentful Paint (LCP)</div>
+                                    <div id="lcp-value" class="text-2xl font-bold">-</div>
+                                </div>
+                                <div class="p-4 bg-gray-50 rounded-lg">
+                                    <div class="text-sm text-gray-600 mb-1">Cumulative Layout Shift (CLS)</div>
+                                    <div id="cls-value" class="text-2xl font-bold">-</div>
+                                </div>
+                                <div class="p-4 bg-gray-50 rounded-lg">
+                                    <div class="text-sm text-gray-600 mb-1">First Contentful Paint (FCP)</div>
+                                    <div id="fcp-value" class="text-2xl font-bold">-</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Field Data (Real User Metrics) -->
+                        <div class="mb-6">
+                            <h3 class="text-lg font-semibold text-gray-900 mb-4">Real User Experience Data</h3>
+                            <div id="field-data-container" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <!-- Will be populated by JavaScript -->
+                            </div>
+                        </div>
+
+                        <!-- Trend Chart -->
+                        <div class="mb-6">
+                            <h3 class="text-lg font-semibold text-gray-900 mb-4">Performance Trends</h3>
+                            <button id="load-trends" class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 mb-4">
+                                Load Historical Data
+                            </button>
+                            <div id="trends-container" class="hidden">
+                                <canvas id="trends-chart" width="400" height="200"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Error Message -->
+                    <div id="pagespeed-error" class="hidden">
+                        <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                            <div class="flex items-center">
+                                <svg class="w-5 h-5 text-red-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
+                                </svg>
+                                <span id="error-message" class="text-red-600"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 
                 <!-- Analysis Results Card -->
                 <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
@@ -1343,6 +1449,175 @@ class SEO_Optimizer {
                         </p>
                     </div>
                 </div>
+            </div>
+
+            <!-- JavaScript for PageSpeed Analysis -->
+            <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+            <script>
+            jQuery(document).ready(function($) {
+                // PageSpeed Analysis
+                $('#analyze-pagespeed').on('click', function() {
+                    const url = $('#pagespeed-url').val();
+                    const strategy = 'desktop'; // Fixed to desktop strategy
+
+                    if (!url) {
+                        alert('Please enter a URL to analyze');
+                        return;
+                    }
+
+                    // Hide previous results/errors
+                    $('#pagespeed-results, #pagespeed-error').addClass('hidden');
+                    $('#pagespeed-loading').removeClass('hidden');
+
+                    $.ajax({
+                        url: '<?php echo admin_url('admin-ajax.php'); ?>',
+                        type: 'POST',
+                        data: {
+                            action: 'analyze_pagespeed',
+                            url: url,
+                            strategy: strategy,
+                            nonce: '<?php echo wp_create_nonce('pagespeed_nonce'); ?>'
+                        },
+                        success: function(response) {
+                            $('#pagespeed-loading').addClass('hidden');
+
+                            if (response.success) {
+                                displayPageSpeedResults(response.data);
+                                $('#pagespeed-results').removeClass('hidden');
+                            } else {
+                                $('#error-message').text(response.data || 'Analysis failed');
+                                $('#pagespeed-error').removeClass('hidden');
+                            }
+                        },
+                        error: function() {
+                            $('#pagespeed-loading').addClass('hidden');
+                            $('#error-message').text('Network error occurred');
+                            $('#pagespeed-error').removeClass('hidden');
+                        }
+                    });
+                });
+
+                // Load Trends
+                $('#load-trends').on('click', function() {
+                    const url = $('#pagespeed-url').val();
+                    const strategy = 'desktop'; // Fixed to desktop strategy
+
+                    if (!url) {
+                        alert('Please enter a URL first');
+                        return;
+                    }
+
+                    $.ajax({
+                        url: '<?php echo admin_url('admin-ajax.php'); ?>',
+                        type: 'POST',
+                        data: {
+                            action: 'get_pagespeed_trends',
+                            url: url,
+                            strategy: strategy,
+                            nonce: '<?php echo wp_create_nonce('pagespeed_nonce'); ?>'
+                        },
+                        success: function(response) {
+                            if (response.success && response.data.labels.length > 0) {
+                                displayTrendChart(response.data);
+                                $('#trends-container').removeClass('hidden');
+                            } else {
+                                alert('No historical data available');
+                            }
+                        }
+                    });
+                });
+
+                function displayPageSpeedResults(data) {
+                    // Display scores with color coding
+                    displayScore('#performance-score', data.scores.performance);
+                    displayScore('#seo-score', data.scores.seo);
+                    displayScore('#accessibility-score', data.scores.accessibility);
+                    displayScore('#best-practices-score', data.scores.best_practices);
+
+                    // Display Core Web Vitals
+                    $('#lcp-value').text(data.core_web_vitals.lcp ? data.core_web_vitals.lcp + 's' : 'N/A');
+                    $('#cls-value').text(data.core_web_vitals.cls || 'N/A');
+                    $('#fcp-value').text(data.core_web_vitals.fcp ? data.core_web_vitals.fcp + 's' : 'N/A');
+
+                    // Display Field Data
+                    const fieldDataHtml = `
+                        <div class="p-4 bg-gray-50 rounded-lg">
+                            <div class="text-sm text-gray-600 mb-1">Real LCP (p75)</div>
+                            <div class="text-xl font-bold">${data.field_data.lcp_p75 ? data.field_data.lcp_p75 + 's' : 'N/A'}</div>
+                        </div>
+                        <div class="p-4 bg-gray-50 rounded-lg">
+                            <div class="text-sm text-gray-600 mb-1">Real CLS (p75)</div>
+                            <div class="text-xl font-bold">${data.field_data.cls_p75 || 'N/A'}</div>
+                        </div>
+                        <div class="p-4 bg-gray-50 rounded-lg">
+                            <div class="text-sm text-gray-600 mb-1">Real FCP (p75)</div>
+                            <div class="text-xl font-bold">${data.field_data.fcp_p75 ? data.field_data.fcp_p75 + 's' : 'N/A'}</div>
+                        </div>
+                    `;
+                    $('#field-data-container').html(fieldDataHtml);
+
+                    // Show cache status
+                    if (data.from_cache) {
+                        $('#pagespeed-results').prepend('<div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 text-blue-700">Results loaded from cache</div>');
+                    }
+                }
+
+                function displayScore(selector, score) {
+                    const $element = $(selector);
+                    $element.text(score || 'N/A');
+
+                    // Color coding based on score
+                    $element.removeClass('text-red-600 text-orange-500 text-green-600');
+                    if (score >= 90) {
+                        $element.addClass('text-green-600');
+                    } else if (score >= 50) {
+                        $element.addClass('text-orange-500');
+                    } else if (score !== null) {
+                        $element.addClass('text-red-600');
+                    }
+                }
+
+                function displayTrendChart(data) {
+                    const ctx = document.getElementById('trends-chart').getContext('2d');
+
+                    new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: data.labels,
+                            datasets: [{
+                                label: 'Performance Score',
+                                data: data.performance_scores,
+                                borderColor: 'rgb(59, 130, 246)',
+                                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                tension: 0.1
+                            }, {
+                                label: 'SEO Score',
+                                data: data.seo_scores,
+                                borderColor: 'rgb(16, 185, 129)',
+                                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                                tension: 0.1
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    display: true,
+                                    position: 'top'
+                                }
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    max: 100
+                                }
+                            }
+                        }
+                    });
+                }
+            });
+            </script>
             </div>
         </body>
         </html>
@@ -2321,6 +2596,154 @@ class SEO_Optimizer {
             'title_source' => $recommendations['title_source'],
             'description_source' => $recommendations['description_source']
         );
+    }
+
+    /**
+     * AJAX handler for PageSpeed analysis
+     */
+    public function ajax_analyze_pagespeed() {
+        // Verify nonce
+        if (!wp_verify_nonce($_POST['nonce'], 'pagespeed_nonce')) {
+            wp_die(__('Security check failed', 'seo-optimizer'));
+        }
+
+        // Check user capabilities
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Insufficient permissions', 'seo-optimizer'));
+        }
+
+        $url = esc_url_raw($_POST['url']);
+        $strategy = sanitize_text_field($_POST['strategy']);
+
+        if (!$url) {
+            wp_send_json_error(__('Invalid URL', 'seo-optimizer'));
+        }
+
+        // Get backend API URL from WordPress options or use default
+        $api_base_url = get_option('seo_optimizer_api_url', 'https://seo--production.modal.run');
+
+        // Call the backend PageSpeed API
+        $response = wp_remote_post($api_base_url . '/pagespeed_analysis', array(
+            'timeout' => 120,
+            'headers' => array(
+                'Content-Type' => 'application/json',
+            ),
+            'body' => json_encode(array(
+                'url' => $url,
+                'strategy' => $strategy,
+                'force_refresh' => false
+            ))
+        ));
+
+        if (is_wp_error($response)) {
+            wp_send_json_error(__('Failed to analyze PageSpeed: ', 'seo-optimizer') . $response->get_error_message());
+        }
+
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode($body, true);
+
+        if (isset($data['error'])) {
+            wp_send_json_error($data['error']);
+        }
+
+        wp_send_json_success($data);
+    }
+
+    /**
+     * AJAX handler to get PageSpeed trends
+     */
+    public function ajax_get_pagespeed_trends() {
+        // Verify nonce
+        if (!wp_verify_nonce($_POST['nonce'], 'pagespeed_nonce')) {
+            wp_die(__('Security check failed', 'seo-optimizer'));
+        }
+
+        // Check user capabilities
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Insufficient permissions', 'seo-optimizer'));
+        }
+
+        $url = esc_url_raw($_POST['url']);
+        $strategy = sanitize_text_field($_POST['strategy']);
+
+        if (!$url) {
+            wp_send_json_error(__('Invalid URL', 'seo-optimizer'));
+        }
+
+        // Get backend API URL
+        $api_base_url = get_option('seo_optimizer_api_url', 'https://seo--production.modal.run');
+
+        // Call the backend trends API
+        $response = wp_remote_get($api_base_url . '/pagespeed_trends?' . http_build_query(array(
+            'url' => $url,
+            'strategy' => $strategy,
+            'days' => 7
+        )), array(
+            'timeout' => 30,
+            'headers' => array(
+                'Accept' => 'application/json',
+            )
+        ));
+
+        if (is_wp_error($response)) {
+            wp_send_json_error(__('Failed to get trends: ', 'seo-optimizer') . $response->get_error_message());
+        }
+
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode($body, true);
+
+        if (isset($data['error'])) {
+            wp_send_json_error($data['error']);
+        }
+
+        wp_send_json_success($data);
+    }
+
+    /**
+     * AJAX handler to clear PageSpeed cache
+     */
+    public function ajax_clear_pagespeed_cache() {
+        // Verify nonce
+        if (!wp_verify_nonce($_POST['nonce'], 'pagespeed_nonce')) {
+            wp_die(__('Security check failed', 'seo-optimizer'));
+        }
+
+        // Check user capabilities
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Insufficient permissions', 'seo-optimizer'));
+        }
+
+        $url = isset($_POST['url']) ? esc_url_raw($_POST['url']) : null;
+
+        // Get backend API URL
+        $api_base_url = get_option('seo_optimizer_api_url', 'https://seo--production.modal.run');
+
+        // Call the backend cache clear API
+        $body_data = array();
+        if ($url) {
+            $body_data['url'] = $url;
+        }
+
+        $response = wp_remote_post($api_base_url . '/pagespeed_clear_cache', array(
+            'timeout' => 30,
+            'headers' => array(
+                'Content-Type' => 'application/json',
+            ),
+            'body' => json_encode($body_data)
+        ));
+
+        if (is_wp_error($response)) {
+            wp_send_json_error(__('Failed to clear cache: ', 'seo-optimizer') . $response->get_error_message());
+        }
+
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode($body, true);
+
+        if (isset($data['error'])) {
+            wp_send_json_error($data['error']);
+        }
+
+        wp_send_json_success($data);
     }
 }
 
