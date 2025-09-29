@@ -1,0 +1,116 @@
+/* SEO Optimizer Meta Box Styles */
+
+.seo-optimizer-meta-box {
+    padding: 10px 0;
+}
+
+.seo-optimizer-meta-box p {
+    margin-bottom: 15px;
+    color: #666;
+}
+
+.seo-optimizer-toggle {
+    margin-bottom: 15px;
+}
+
+#toggle-seo-fields {
+    background: #0073aa;
+    border-color: #0073aa;
+    color: #fff;
+}
+
+#toggle-seo-fields:hover {
+    background: #005a87;
+    border-color: #005a87;
+}
+
+#seo-optimizer-fields-container .seo-optimizer-section {
+    margin-bottom: 20px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+#seo-optimizer-fields-container .seo-optimizer-section h3 {
+    background: #f9f9f9;
+    padding: 8px 12px;
+    margin: 0;
+    border-bottom: 1px solid #ddd;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+#seo-optimizer-fields-container .seo-optimizer-fields {
+    padding: 0;
+}
+
+#seo-optimizer-fields-container table {
+    margin: 0;
+    font-size: 12px;
+}
+
+#seo-optimizer-fields-container table th {
+    background: #f6f7f7;
+    font-size: 12px;
+    padding: 8px;
+}
+
+#seo-optimizer-fields-container table td {
+    padding: 6px 8px;
+    font-size: 12px;
+    vertical-align: top;
+    word-break: break-word;
+}
+
+#seo-optimizer-fields-container pre {
+    max-height: 100px;
+    overflow-y: auto;
+    font-size: 11px;
+    margin: 0;
+    white-space: pre-wrap;
+}
+
+#seo-optimizer-fields-container img {
+    max-width: 100px;
+    max-height: 75px;
+}
+
+/* Responsive adjustments */
+@media screen and (max-width: 782px) {
+    #seo-optimizer-fields-container table,
+    #seo-optimizer-fields-container table thead,
+    #seo-optimizer-fields-container table tbody,
+    #seo-optimizer-fields-container table th,
+    #seo-optimizer-fields-container table td,
+    #seo-optimizer-fields-container table tr {
+        display: block;
+    }
+    
+    #seo-optimizer-fields-container table thead tr {
+        position: absolute;
+        top: -9999px;
+        left: -9999px;
+    }
+    
+    #seo-optimizer-fields-container table tr {
+        border: 1px solid #ddd;
+        margin-bottom: 5px;
+        padding: 5px;
+    }
+    
+    #seo-optimizer-fields-container table td {
+        border: none;
+        position: relative;
+        padding-left: 25%;
+    }
+    
+    #seo-optimizer-fields-container table td:before {
+        content: attr(data-label) ": ";
+        position: absolute;
+        left: 6px;
+        width: 20%;
+        padding-right: 10px;
+        white-space: nowrap;
+        font-weight: bold;
+        font-size: 11px;
+    }
+}
