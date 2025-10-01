@@ -3,7 +3,7 @@
  * Plugin Name: SEO Optimizer - CMS Fields Viewer
  * Plugin URI: https://example.com/seo-optimizer
  * Description: A WordPress plugin that captures and displays all CMS fields from a post by post ID.
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: Your Name
  * License: GPL v2 or later
  * Text Domain: seo-optimizer
