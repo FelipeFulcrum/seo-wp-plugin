@@ -1,0 +1,40 @@
+# WordPress
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+error_log
+debug.log
+
+# Backups
+*.backup
+*_backup.php
+
+# Docker data
+wordpress_data/
+db_data/
+
+# System Files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Temporary files
+*.tmp
+*.temp
+
+# Node modules
+node_modules/
+package-lock.json
+
+# Environment files
+.env
+.env.local

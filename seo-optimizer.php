@@ -467,10 +467,17 @@ class SEO_Optimizer {
     /**
      * Admin page callback
      */
-    public function admin_page() {
-        // Get all published posts and pages
+    public function analysis_page() {
+        // Get all published posts, pages, and products
+        $post_types = array('page', 'post');
+        
+        // Check if WooCommerce is active and add product post type
+        if (class_exists('WooCommerce')) {
+            $post_types[] = 'product';
+        }
+        
         $pages = get_posts(array(
-            'post_type' => array('page', 'post'),
+            'post_type' => $post_types,
             'post_status' => 'publish',
             'numberposts' => -1,
             'orderby' => 'title',
@@ -505,21 +512,47 @@ class SEO_Optimizer {
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 <!-- Header Section -->
                 <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-                    <h1 class="text-3xl font-bold text-gray-900 mb-2">SEO Meta Data Management</h1>
-                    <p class="text-gray-600 text-lg">Select a page or post to optimize its SEO meta data with AI-powered recommendations</p>
+                    <h1 class="text-3xl font-bold text-gray-900 mb-2">Content Management Hub</h1>
+                    <p class="text-gray-600 text-lg">Manage your website content across products, blogs, and pages from one unified interface.</p>
                 </div>
 
-                <!-- Page Selection -->
-                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                    <h2 class="text-xl font-semibold text-gray-900 mb-4">Search Page or Post</h2>
+                <!-- Tabs Navigation -->
+                <div class="bg-white rounded-t-lg shadow-sm border border-gray-200 border-b-0">
+                    <div class="flex space-x-1 p-2">
+                        <?php if (class_exists('WooCommerce')): ?>
+                        <button onclick="switchTab('product')" id="tab-product" class="tab-button flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path>
+                            </svg>
+                            <span>Product</span>
+                        </button>
+                        <?php endif; ?>
+                        <button onclick="switchTab('post')" id="tab-post" class="tab-button flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium bg-blue-50 text-blue-primary border-2 border-blue-primary transition-colors">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                            </svg>
+                            <span>Content</span>
+                        </button>
+                        <button onclick="switchTab('page')" id="tab-page" class="tab-button flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                            </svg>
+                            <span>Pages</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Tab Content -->
+                <div class="bg-white rounded-b-lg shadow-sm border border-gray-200 p-6">
+                    <h2 class="text-xl font-semibold text-gray-900 mb-4" id="tab-title">Blog Content Management</h2>
 
                     <!-- Controls: search + dropdown select -->
                     <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mb-4">
-                        <input id="search-pages" type="text" placeholder="Search pages..." class="w-full sm:w-1/2 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-primary focus:border-transparent" />
+                        <input id="search-pages" type="text" placeholder="Search content..." class="w-full sm:w-1/2 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-primary focus:border-transparent" />
                         <select id="select-page" class="w-full sm:w-1/2 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-primary focus:border-transparent">
-                            <option value="">Select a page...</option>
+                            <option value="">Select content...</option>
                             <?php foreach ($pages as $page): ?>
-                                <option value="<?php echo esc_attr($page->ID); ?>"><?php echo esc_html($page->post_title); ?></option>
+                                <option value="<?php echo esc_attr($page->ID); ?>" data-type="<?php echo esc_attr($page->post_type); ?>"><?php echo esc_html($page->post_title); ?></option>
                             <?php endforeach; ?>
                         </select>
                     </div>
@@ -527,7 +560,7 @@ class SEO_Optimizer {
                     <!-- List of pages with collapsible optimization panels -->
                     <div id="pages-list" class="divide-y divide-gray-200">
                         <?php foreach ($pages as $page): ?>
-                            <div id="item-<?php echo $page->ID; ?>" data-title="<?php echo esc_attr(strtolower($page->post_title)); ?>" class="py-3">
+                            <div id="item-<?php echo $page->ID; ?>" data-title="<?php echo esc_attr(strtolower($page->post_title)); ?>" data-type="<?php echo esc_attr($page->post_type); ?>" class="py-3 page-item">
                                 <button type="button" onclick="togglePagePanel(<?php echo $page->ID; ?>)" class="w-full flex items-center justify-between text-left">
                                     <div class="min-w-0">
                                         <h3 class="text-sm font-medium text-gray-900 truncate"><?php echo esc_html($page->post_title); ?></h3>
@@ -731,7 +764,7 @@ class SEO_Optimizer {
                                     description: data.data.current_meta.description,
                                     content: data.data.content || '',
                                     id: String(pageId)
-                                });
+                                }, pageId);
                                 
                                 // Merge AI recommendations with page data
                                 if (aiData) {
@@ -769,7 +802,10 @@ class SEO_Optimizer {
                     }
                 }
 
-                async function aiGenMeta(pageData) {
+                async function aiGenMeta(pageData, pageId) {
+                    // Get writing style and tone input from the dynamic panel
+                    const writingStyleTone = document.getElementById(`writing-style-tone-${pageId}`)?.value || '';
+                    
                     // Log the input data being sent to AI API
                     console.group('🤖 AI API Input Data');
                     console.log('📝 Page Data Object:', pageData);
@@ -778,8 +814,10 @@ class SEO_Optimizer {
                         current_meta_description: pageData.description,
                         html_content: pageData.content,
                         post_id: pageData.id,
+                        writing_style_tone: writingStyleTone,
                     });
                     console.log('📏 Content Length:', pageData.content ? pageData.content.length : 0, 'characters');
+                    console.log('✍️ Writing Style & Tone:', writingStyleTone);
                     console.log('🔗 API URL:', 'https://test-del-test--seo-seo-optimizer-meta.modal.run/');
                     console.groupEnd();
                     
@@ -794,6 +832,7 @@ class SEO_Optimizer {
                             current_meta_description: pageData.description,
                             html_content: pageData.content,
                             post_id: pageData.id,
+                            writing_style_tone: writingStyleTone,
                         })
                     });
                     
@@ -953,7 +992,7 @@ class SEO_Optimizer {
                             description: base.current_meta.description,
                             content: base.content || '',
                             id: String(pageId)
-                        });
+                        }, pageId);
                         if (aiData) {
                             const rt = document.getElementById(`rt-${pageId}`);
                             const rd = document.getElementById(`rd-${pageId}`);
@@ -1023,6 +1062,8 @@ class SEO_Optimizer {
                                         <input value="${escapeAttr(currentTitle)}" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" readonly />
                                         <label class="block mt-3 text-xs font-medium text-gray-600 mb-1">Current Meta Description</label>
                                         <textarea class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" rows="3" readonly>${escapeHtmlLocal(currentDesc)}</textarea>
+                                        <label class="block mt-3 text-xs font-medium text-gray-600 mb-1">Writing Style and Tone</label>
+                                        <textarea id="writing-style-tone-${pageId}" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" rows="2" placeholder="e.g., Professional, conversational, technical..."></textarea>
                                     </div>
                                     <div>
                                         <div class="flex justify-between items-center mb-1">
@@ -1062,6 +1103,65 @@ class SEO_Optimizer {
                     return escapeHtmlLocal(v).replace(/"/g,'&quot;');
                 }
 
+                // Tab switching functionality
+                let currentTab = 'post'; // Default to Content/Blog tab
+                
+                function switchTab(tabType) {
+                    currentTab = tabType;
+                    
+                    // Update tab button styles
+                    document.querySelectorAll('.tab-button').forEach(btn => {
+                        btn.classList.remove('bg-blue-50', 'text-blue-primary', 'border-2', 'border-blue-primary');
+                        btn.classList.add('text-gray-600', 'hover:bg-gray-100');
+                    });
+                    
+                    const activeTab = document.getElementById(`tab-${tabType}`);
+                    if (activeTab) {
+                        activeTab.classList.remove('text-gray-600', 'hover:bg-gray-100');
+                        activeTab.classList.add('bg-blue-50', 'text-blue-primary', 'border-2', 'border-blue-primary');
+                    }
+                    
+                    // Update title based on tab
+                    const titleEl = document.getElementById('tab-title');
+                    const titles = {
+                        'product': 'Product Content Management',
+                        'post': 'Blog Content Management',
+                        'page': 'Page Content Management'
+                    };
+                    if (titleEl) titleEl.textContent = titles[tabType] || 'Content Management';
+                    
+                    // Filter content by post type
+                    filterByPostType(tabType);
+                    
+                    // Clear search and reset dropdown
+                    const searchEl = document.getElementById('search-pages');
+                    if (searchEl) searchEl.value = '';
+                    const selectEl = document.getElementById('select-page');
+                    if (selectEl) selectEl.value = '';
+                }
+                
+                function filterByPostType(postType) {
+                    // Filter list items
+                    document.querySelectorAll('.page-item').forEach(item => {
+                        const itemType = item.getAttribute('data-type');
+                        if (itemType === postType) {
+                            item.style.display = '';
+                        } else {
+                            item.style.display = 'none';
+                        }
+                    });
+                    
+                    // Filter dropdown options
+                    const selectEl = document.getElementById('select-page');
+                    if (selectEl) {
+                        Array.from(selectEl.options).forEach(option => {
+                            if (option.value === '') return; // Keep the placeholder
+                            const optionType = option.getAttribute('data-type');
+                            option.style.display = optionType === postType ? '' : 'none';
+                        });
+                    }
+                }
+
                 // Search and dropdown behavior
                 const searchEl = document.getElementById('search-pages');
                 if (searchEl) {
@@ -1069,7 +1169,13 @@ class SEO_Optimizer {
                         const q = (e.target.value || '').trim().toLowerCase();
                         document.querySelectorAll('#pages-list > div[id^="item-"]').forEach(function(item){
                             const title = item.getAttribute('data-title') || '';
-                            item.style.display = title.indexOf(q) !== -1 ? '' : 'none';
+                            const itemType = item.getAttribute('data-type');
+                            // Only show if matches search AND current tab
+                            if (title.indexOf(q) !== -1 && itemType === currentTab) {
+                                item.style.display = '';
+                            } else {
+                                item.style.display = 'none';
+                            }
                         });
                     });
                 }
@@ -1085,6 +1191,9 @@ class SEO_Optimizer {
                         }
                     });
                 }
+                
+                // Initialize with default tab
+                switchTab('post');
 
                 // Apply All functionality
                 document.getElementById('apply-all-btn').addEventListener('click', async function() {
@@ -1113,7 +1222,7 @@ class SEO_Optimizer {
     /**
      * Analysis page callback
      */
-    public function analysis_page() {
+    public function admin_page() {
         ?>
         <!DOCTYPE html>
         <html lang="en">
