@@ -998,12 +998,17 @@ class SEO_Optimizer {
                             const rd = document.getElementById(`rd-${pageId}`);
                             if (rt) rt.value = aiData.meta_title || '';
                             if (rd) rd.value = aiData.meta_description || '';
+                            
+                            // Show the meta preview section
+                            const metaPreview = document.getElementById(`meta-preview-${pageId}`);
+                            if (metaPreview) metaPreview.classList.remove('hidden');
+                            
                             // Recommended keywords (store raw and render chips)
                             const rk = document.getElementById(`rk-${pageId}`);
                             const rkval = document.getElementById(`rkval-${pageId}`);
                             const kws = (aiData.trending_keywords || []).map(k => k.trim()).filter(Boolean);
                             if (rk) {
-                                rk.innerHTML = kws.length ? kws.map(k => `<span class=\"bg-gray-200 text-gray-700 px-2 py-1 rounded mr-1 mb-1 inline-block\">${escapeHtmlLocal(k)}</span>`).join(' ') : '<span class="text-gray-400">No keywords</span>';
+                                rk.innerHTML = kws.length ? kws.map(k => `<span class=\"bg-gray-200 text-gray-700 px-2 py-1 rounded text-xs mr-1 mb-1 inline-block\">${escapeHtmlLocal(k)}</span>`).join(' ') : '<span class="text-gray-400 text-xs">No keywords</span>';
                             }
                             if (rkval) rkval.value = kws.join(', ');
                             base.recommendations = {
@@ -1055,40 +1060,195 @@ class SEO_Optimizer {
                         
                         panel.innerHTML = `
                             <div class="border border-gray-200 rounded-lg p-4 bg-gray-50">
-                                <h4 class="text-sm font-semibold text-gray-900 mb-2">Optimize: ${escapeHtmlLocal(pageTitle)}</h4>
-                                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                                    <div>
-                                        <label class="block text-xs font-medium text-gray-600 mb-1">Current Meta Title</label>
-                                        <input value="${escapeAttr(currentTitle)}" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" readonly />
-                                        <label class="block mt-3 text-xs font-medium text-gray-600 mb-1">Current Meta Description</label>
-                                        <textarea class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" rows="3" readonly>${escapeHtmlLocal(currentDesc)}</textarea>
-                                        <label class="block mt-3 text-xs font-medium text-gray-600 mb-1">Writing Style and Tone</label>
-                                        <textarea id="writing-style-tone-${pageId}" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" rows="2" placeholder="e.g., Professional, conversational, technical..."></textarea>
-                                    </div>
-                                    <div>
-                                        <div class="flex justify-between items-center mb-1">
-                                            <label class="block text-xs font-medium text-gray-600">Recommended Title</label>
-                                            <button class="text-blue-primary text-xs" onclick="applyInlineRecommendation(${pageId}, 'title')">Apply</button>
-                                        </div>
-                                        <input id="rt-${pageId}" value="${escapeAttr(recTitle)}" placeholder="Click Generate AI Recommendations" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-                                        <div class="flex justify-between items-center mb-1 mt-3">
-                                            <label class="block text-xs font-medium text-gray-600">Recommended Description</label>
-                                            <button class="text-blue-primary text-xs" onclick="applyInlineRecommendation(${pageId}, 'description')">Apply</button>
-                                        </div>
-                                        <textarea id="rd-${pageId}" placeholder="Click Generate AI Recommendations" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" rows="3">${escapeHtmlLocal(recDesc)}</textarea>
-                                        <div class="flex justify-between items-center mb-1 mt-3">
-                                            <label class="block text-xs font-medium text-gray-600">Recommended Keywords</label>
-                                            <button class="text-blue-primary text-xs" onclick="applyInlineRecommendation(${pageId}, 'keywords')">Apply</button>
-                                        </div>
+                                <h4 class="text-sm font-semibold text-gray-900 mb-3">Optimize: ${escapeHtmlLocal(pageTitle)}</h4>
+                                
+                                <!-- One-Click Optimize Button -->
+                                <button 
+                                    onclick="optimizeEntirePage(${pageId})"
+                                    class="w-full bg-gradient-to-r from-blue-primary to-purple-accent hover:from-blue-dark hover:to-purple-700 text-white font-semibold py-3 px-4 rounded-lg mb-3 flex items-center justify-center gap-2 transition-all shadow-sm hover:shadow-md">
+                                    <span>🚀</span>
+                                    <span>Optimize Entire Page</span>
+                                </button>
+                                
+                                <!-- Writing Style & Keywords Section -->
+                                <div class="bg-white border border-gray-200 rounded-lg p-3 mb-3">
+                                    <label class="block text-xs font-medium text-gray-700 mb-1">Writing Style and Tone</label>
+                                    <textarea id="writing-style-tone-${pageId}" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" rows="2" placeholder="e.g., Professional, conversational, technical..."></textarea>
+                                    
+                                    <div class="mt-3">
+                                        <label class="block text-xs font-medium text-gray-700 mb-1">Recommended Keywords</label>
                                         <input type="hidden" id="rkval-${pageId}" value="" />
-                                        <div id="rk-${pageId}" class="min-h-[40px] px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm text-gray-700">
-                                            <span class="text-gray-400">Click Generate AI Recommendations</span>
-                                        </div>
-                                        <div class="mt-4 text-right">
-                                            <button id="genbtn-${pageId}" class="bg-blue-primary hover:bg-blue-dark text-white text-sm px-3 py-2 rounded" onclick="generateRecommendationsFor(${pageId})">Generate AI Recommendations</button>
+                                        <div id="rk-${pageId}" class="min-h-[40px] px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-sm text-gray-700">
+                                            <span class="text-gray-400 text-xs">Keywords will appear here after optimization</span>
                                         </div>
                                     </div>
                                 </div>
+                                
+                                <!-- Divider -->
+                                <div class="flex items-center gap-3 my-3">
+                                    <div class="flex-1 border-t border-gray-300"></div>
+                                    <span class="text-xs text-gray-500 font-medium">CONTENT BLOCKS</span>
+                                    <div class="flex-1 border-t border-gray-300"></div>
+                                </div>
+                                
+                                <!-- Content Block Optimizer -->
+                                <div id="content-block-optimizer-${pageId}">
+                                    
+                                    <!-- Accordion Sections -->
+                                    <div class="space-y-2">
+                                        
+                                        <!-- Meta Tags & SEO Section (FIRST) -->
+                                        <div class="border border-gray-300 rounded-lg overflow-hidden shadow-sm">
+                                            <button 
+                                                onclick="toggleBlockSection(${pageId}, 'meta')"
+                                                class="w-full flex items-center justify-between p-3 bg-white hover:bg-gray-50 transition-colors">
+                                                <div class="flex items-center gap-2">
+                                                    <span class="text-lg">🏷️</span>
+                                                    <span class="font-medium text-sm text-gray-900">Meta Tags & SEO</span>
+                                                </div>
+                                                <svg id="meta-arrow-${pageId}" class="w-5 h-5 text-gray-500 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                                                </svg>
+                                            </button>
+                                            <div id="meta-section-${pageId}" class="hidden bg-gray-50 p-4 border-t border-gray-200">
+                                                <!-- Current Meta -->
+                                                <div class="mb-4">
+                                                    <h5 class="text-xs font-semibold text-gray-700 mb-2">Current Meta Data</h5>
+                                                    <div class="space-y-2">
+                                                        <div>
+                                                            <label class="block text-xs text-gray-600 mb-1">Meta Title</label>
+                                                            <input value="${escapeAttr(currentTitle)}" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white" readonly />
+                                                        </div>
+                                                        <div>
+                                                            <label class="block text-xs text-gray-600 mb-1">Meta Description</label>
+                                                            <textarea class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white" rows="2" readonly>${escapeHtmlLocal(currentDesc)}</textarea>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <!-- Generate Button -->
+                                                <button id="genbtn-${pageId}" 
+                                                    onclick="generateRecommendationsFor(${pageId})" 
+                                                    class="w-full bg-blue-primary hover:bg-blue-dark text-white text-sm px-3 py-2 rounded transition-colors mb-4">
+                                                    Generate AI Recommendations
+                                                </button>
+                                                
+                                                <!-- Preview/Recommendations -->
+                                                <div id="meta-preview-${pageId}" class="hidden">
+                                                    <h5 class="text-xs font-semibold text-gray-700 mb-2">✨ Optimized Preview</h5>
+                                                    <div class="space-y-3">
+                                                        <div class="bg-white border border-gray-200 rounded-lg p-3">
+                                                            <div class="flex justify-between items-center mb-1">
+                                                                <label class="block text-xs font-medium text-gray-600">Recommended Title</label>
+                                                                <button class="text-blue-primary text-xs hover:text-blue-dark font-medium" onclick="applyInlineRecommendation(${pageId}, 'title')">Apply</button>
+                                                            </div>
+                                                            <input id="rt-${pageId}" value="${escapeAttr(recTitle)}" placeholder="Generating..." class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-gray-50" readonly />
+                                                        </div>
+                                                        <div class="bg-white border border-gray-200 rounded-lg p-3">
+                                                            <div class="flex justify-between items-center mb-1">
+                                                                <label class="block text-xs font-medium text-gray-600">Recommended Description</label>
+                                                                <button class="text-blue-primary text-xs hover:text-blue-dark font-medium" onclick="applyInlineRecommendation(${pageId}, 'description')">Apply</button>
+                                                            </div>
+                                                            <textarea id="rd-${pageId}" placeholder="Generating..." class="w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-gray-50" rows="2" readonly>${escapeHtmlLocal(recDesc)}</textarea>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Text Content Section -->
+                                        <div class="border border-gray-300 rounded-lg overflow-hidden shadow-sm">
+                                            <button 
+                                                onclick="toggleBlockSection(${pageId}, 'text')"
+                                                class="w-full flex items-center justify-between p-3 bg-white hover:bg-gray-50 transition-colors">
+                                                <div class="flex items-center gap-2">
+                                                    <span class="text-lg">📄</span>
+                                                    <span class="font-medium text-sm text-gray-900">Text Content</span>
+                                                    <span id="text-count-${pageId}" class="text-xs bg-blue-100 text-blue-primary px-2 py-1 rounded-full font-medium">
+                                                        Loading...
+                                                    </span>
+                                                </div>
+                                                <svg id="text-arrow-${pageId}" class="w-5 h-5 text-gray-500 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                                                </svg>
+                                            </button>
+                                            <div id="text-section-${pageId}" class="hidden bg-gray-50 p-4 border-t border-gray-200">
+                                                <div id="text-blocks-${pageId}" class="space-y-2 mb-3 max-h-60 overflow-y-auto">
+                                                    <!-- Blocks will be loaded here -->
+                                                </div>
+                                                <div class="flex gap-2 pt-3 border-t border-gray-200">
+                                                    <button onclick="selectAllBlocks(${pageId}, 'text')" class="text-xs bg-white border border-gray-300 px-3 py-1.5 rounded hover:bg-gray-100 transition-colors">
+                                                        ✓ Select All
+                                                    </button>
+                                                    <button onclick="optimizeSelectedBlocks(${pageId}, 'text')" class="text-xs bg-blue-primary text-white px-3 py-1.5 rounded hover:bg-blue-dark transition-colors">
+                                                        <span id="text-optimize-btn-${pageId}">Optimize Selected (0)</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Visual/CTA Content Section -->
+                                        <div class="border border-gray-300 rounded-lg overflow-hidden shadow-sm">
+                                            <button 
+                                                onclick="toggleBlockSection(${pageId}, 'visual')"
+                                                class="w-full flex items-center justify-between p-3 bg-white hover:bg-gray-50 transition-colors">
+                                                <div class="flex items-center gap-2">
+                                                    <span class="text-lg">🎨</span>
+                                                    <span class="font-medium text-sm text-gray-900">Visual/CTA Content</span>
+                                                    <span id="visual-count-${pageId}" class="text-xs bg-purple-100 text-purple-accent px-2 py-1 rounded-full font-medium">
+                                                        Loading...
+                                                    </span>
+                                                </div>
+                                                <svg id="visual-arrow-${pageId}" class="w-5 h-5 text-gray-500 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                                                </svg>
+                                            </button>
+                                            <div id="visual-section-${pageId}" class="hidden bg-gray-50 p-4 border-t border-gray-200">
+                                                <div id="visual-blocks-${pageId}" class="space-y-2 mb-3 max-h-60 overflow-y-auto"></div>
+                                                <div class="flex gap-2 pt-3 border-t border-gray-200">
+                                                    <button onclick="selectAllBlocks(${pageId}, 'visual')" class="text-xs bg-white border border-gray-300 px-3 py-1.5 rounded hover:bg-gray-100 transition-colors">
+                                                        ✓ Select All
+                                                    </button>
+                                                    <button onclick="optimizeSelectedBlocks(${pageId}, 'visual')" class="text-xs bg-purple-accent text-white px-3 py-1.5 rounded hover:bg-purple-700 transition-colors">
+                                                        <span id="visual-optimize-btn-${pageId}">Optimize Selected (0)</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Product Content Section -->
+                                        <div id="product-section-wrapper-${pageId}" class="border border-gray-300 rounded-lg overflow-hidden shadow-sm" style="display: none;">
+                                            <button 
+                                                onclick="toggleBlockSection(${pageId}, 'product')"
+                                                class="w-full flex items-center justify-between p-3 bg-white hover:bg-gray-50 transition-colors">
+                                                <div class="flex items-center gap-2">
+                                                    <span class="text-lg">🛍️</span>
+                                                    <span class="font-medium text-sm text-gray-900">Product Content</span>
+                                                    <span id="product-count-${pageId}" class="text-xs bg-green-100 text-green-600 px-2 py-1 rounded-full font-medium">
+                                                        0 blocks
+                                                    </span>
+                                                </div>
+                                                <svg id="product-arrow-${pageId}" class="w-5 h-5 text-gray-500 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                                                </svg>
+                                            </button>
+                                            <div id="product-section-${pageId}" class="hidden bg-gray-50 p-4 border-t border-gray-200">
+                                                <div id="product-blocks-${pageId}" class="space-y-2 mb-3 max-h-60 overflow-y-auto"></div>
+                                                <div class="flex gap-2 pt-3 border-t border-gray-200">
+                                                    <button onclick="selectAllBlocks(${pageId}, 'product')" class="text-xs bg-white border border-gray-300 px-3 py-1.5 rounded hover:bg-gray-100 transition-colors">
+                                                        ✓ Select All
+                                                    </button>
+                                                    <button onclick="optimizeSelectedBlocks(${pageId}, 'product')" class="text-xs bg-green-600 text-white px-3 py-1.5 rounded hover:bg-green-700 transition-colors">
+                                                        <span id="product-optimize-btn-${pageId}">Optimize Selected (0)</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                    </div>
+                                    
+                                </div>
+                                
                             </div>`;
                         panel.dataset.loaded = '1';
                     }
@@ -1101,6 +1261,225 @@ class SEO_Optimizer {
                 }
                 function escapeAttr(v){
                     return escapeHtmlLocal(v).replace(/"/g,'&quot;');
+                }
+
+                // ========================================
+                // Content Block Optimizer Functions
+                // ========================================
+                
+                // Store blocks data per page
+                const pageBlocksCache = {};
+                
+                // Toggle accordion section
+                function toggleBlockSection(pageId, sectionType) {
+                    const section = document.getElementById(`${sectionType}-section-${pageId}`);
+                    const arrow = document.getElementById(`${sectionType}-arrow-${pageId}`);
+                    
+                    if (!section || !arrow) return;
+                    
+                    const isHidden = section.classList.contains('hidden');
+                    
+                    // For content blocks (not meta), close other content blocks when opening
+                    if (sectionType !== 'meta') {
+                        ['text', 'visual', 'product'].forEach(type => {
+                            if (type !== sectionType) {
+                                const otherSection = document.getElementById(`${type}-section-${pageId}`);
+                                const otherArrow = document.getElementById(`${type}-arrow-${pageId}`);
+                                if (otherSection && otherArrow) {
+                                    otherSection.classList.add('hidden');
+                                    otherArrow.classList.remove('rotate-90');
+                                }
+                            }
+                        });
+                    }
+                    
+                    // Toggle current section
+                    if (isHidden) {
+                        section.classList.remove('hidden');
+                        arrow.classList.add('rotate-90');
+                        
+                        // Load blocks if not loaded yet (with mock data for now) - only for content blocks
+                        if (sectionType !== 'meta' && !pageBlocksCache[pageId]) {
+                            loadPageBlocksMock(pageId);
+                        }
+                    } else {
+                        section.classList.add('hidden');
+                        arrow.classList.remove('rotate-90');
+                    }
+                }
+                
+                // Mock data loader (simulates backend response)
+                function loadPageBlocksMock(pageId) {
+                    // Simulate realistic page blocks
+                    const mockData = {
+                        blocks: [
+                            { id: 0, blockName: 'core/heading', heading_level: 'H1', clean_text: 'Welcome to Our Company', preview: 'Welcome to Our Company', category: 'text_content' },
+                            { id: 1, blockName: 'core/paragraph', clean_text: 'We provide amazing services that help businesses grow...', preview: 'We provide amazing services that help businesses grow...', category: 'text_content' },
+                            { id: 2, blockName: 'core/heading', heading_level: 'H2', clean_text: 'Our Services', preview: 'Our Services', category: 'text_content' },
+                            { id: 3, blockName: 'core/paragraph', clean_text: 'Our team specializes in cutting-edge solutions...', preview: 'Our team specializes in cutting-edge solutions...', category: 'text_content' },
+                            { id: 4, blockName: 'core/heading', heading_level: 'H2', clean_text: 'Why Choose Us', preview: 'Why Choose Us', category: 'text_content' },
+                            { id: 5, blockName: 'core/list', clean_text: 'Service 1, Service 2, Service 3', preview: '• Service 1 • Service 2 • Service 3', category: 'text_content' },
+                            { id: 6, blockName: 'core/button', clean_text: 'Get Started Now', preview: 'Get Started Now', category: 'cta_elements' },
+                            { id: 7, blockName: 'core/button', clean_text: 'Contact Us', preview: 'Contact Us', category: 'cta_elements' },
+                            { id: 8, blockName: 'core/image', clean_text: 'Team photo at office', preview: 'Team photo at office', category: 'visual_content', metadata: { alt_text: 'Team photo at office' } }
+                        ],
+                        categorized: {
+                            text_content: [
+                                { id: 0, blockName: 'core/heading', heading_level: 'H1', preview: 'Welcome to Our Company' },
+                                { id: 1, blockName: 'core/paragraph', preview: 'We provide amazing services that help businesses grow...' },
+                                { id: 2, blockName: 'core/heading', heading_level: 'H2', preview: 'Our Services' },
+                                { id: 3, blockName: 'core/paragraph', preview: 'Our team specializes in cutting-edge solutions...' },
+                                { id: 4, blockName: 'core/heading', heading_level: 'H2', preview: 'Why Choose Us' },
+                                { id: 5, blockName: 'core/list', preview: '• Service 1 • Service 2 • Service 3' }
+                            ],
+                            cta_elements: [
+                                { id: 6, blockName: 'core/button', preview: 'Get Started Now' },
+                                { id: 7, blockName: 'core/button', preview: 'Contact Us' }
+                            ],
+                            visual_content: [
+                                { id: 8, blockName: 'core/image', preview: 'Team photo at office' }
+                            ],
+                            product_content: []
+                        },
+                        stats: {
+                            total: 9,
+                            text_blocks: 6,
+                            cta_blocks: 2,
+                            visual_blocks: 1,
+                            product_blocks: 0
+                        }
+                    };
+                    
+                    pageBlocksCache[pageId] = mockData;
+                    renderBlocks(pageId, mockData);
+                }
+                
+                // Render blocks into accordion sections
+                function renderBlocks(pageId, data) {
+                    const { categorized, stats } = data;
+                    
+                    // Update counts
+                    const textCount = document.getElementById(`text-count-${pageId}`);
+                    const visualCount = document.getElementById(`visual-count-${pageId}`);
+                    const productCount = document.getElementById(`product-count-${pageId}`);
+                    
+                    if (textCount) textCount.textContent = `${stats.text_blocks} blocks`;
+                    if (visualCount) visualCount.textContent = `${stats.cta_blocks + stats.visual_blocks} blocks`;
+                    if (productCount) productCount.textContent = `${stats.product_blocks} blocks`;
+                    
+                    // Show/hide product section if has products
+                    if (stats.product_blocks > 0) {
+                        const productWrapper = document.getElementById(`product-section-wrapper-${pageId}`);
+                        if (productWrapper) productWrapper.style.display = 'block';
+                    }
+                    
+                    // Render text blocks
+                    const textContainer = document.getElementById(`text-blocks-${pageId}`);
+                    if (textContainer && categorized.text_content) {
+                        textContainer.innerHTML = categorized.text_content.map(block => `
+                            <label class="flex items-start gap-2 p-2 hover:bg-white rounded cursor-pointer border border-transparent hover:border-gray-200 transition-all">
+                                <input type="checkbox" value="${block.id}" onchange="updateSelectedCount(${pageId}, 'text')" class="mt-1 text-blue-primary">
+                                <div class="flex-1 min-w-0">
+                                    <span class="text-xs font-semibold text-gray-700">${block.heading_level || 'Paragraph'}:</span>
+                                    <span class="text-xs text-gray-600 break-words">"${block.preview}"</span>
+                                </div>
+                            </label>
+                        `).join('');
+                    }
+                    
+                    // Render visual/CTA blocks
+                    const visualContainer = document.getElementById(`visual-blocks-${pageId}`);
+                    if (visualContainer) {
+                        const visualBlocks = [...(categorized.cta_elements || []), ...(categorized.visual_content || [])];
+                        if (visualBlocks.length > 0) {
+                            visualContainer.innerHTML = visualBlocks.map(block => `
+                                <label class="flex items-start gap-2 p-2 hover:bg-white rounded cursor-pointer border border-transparent hover:border-gray-200 transition-all">
+                                    <input type="checkbox" value="${block.id}" onchange="updateSelectedCount(${pageId}, 'visual')" class="mt-1 text-purple-accent">
+                                    <div class="flex-1 min-w-0">
+                                        <span class="text-xs font-semibold text-gray-700">${getBlockTypeLabel(block.blockName)}:</span>
+                                        <span class="text-xs text-gray-600 break-words">"${block.preview}"</span>
+                                    </div>
+                                </label>
+                            `).join('');
+                        } else {
+                            visualContainer.innerHTML = '<div class="text-xs text-gray-500 text-center py-4">No visual/CTA content found</div>';
+                        }
+                    }
+                    
+                    // Render product blocks
+                    if (stats.product_blocks > 0) {
+                        const productContainer = document.getElementById(`product-blocks-${pageId}`);
+                        if (productContainer && categorized.product_content) {
+                            productContainer.innerHTML = categorized.product_content.map(block => `
+                                <label class="flex items-start gap-2 p-2 hover:bg-white rounded cursor-pointer border border-transparent hover:border-gray-200 transition-all">
+                                    <input type="checkbox" value="${block.id}" onchange="updateSelectedCount(${pageId}, 'product')" class="mt-1 text-green-600">
+                                    <div class="flex-1 min-w-0">
+                                        <span class="text-xs font-semibold text-gray-700">${getBlockTypeLabel(block.blockName)}:</span>
+                                        <span class="text-xs text-gray-600 break-words">"${block.preview}"</span>
+                                    </div>
+                                </label>
+                            `).join('');
+                        }
+                    }
+                }
+                
+                // Update "Optimize Selected (N)" button text
+                function updateSelectedCount(pageId, sectionType) {
+                    const checkboxes = document.querySelectorAll(`#${sectionType}-blocks-${pageId} input[type="checkbox"]:checked`);
+                    const count = checkboxes.length;
+                    const btn = document.getElementById(`${sectionType}-optimize-btn-${pageId}`);
+                    if (btn) {
+                        btn.textContent = `Optimize Selected (${count})`;
+                    }
+                }
+                
+                // Select all blocks in a section
+                function selectAllBlocks(pageId, sectionType) {
+                    const checkboxes = document.querySelectorAll(`#${sectionType}-blocks-${pageId} input[type="checkbox"]`);
+                    const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+                    
+                    checkboxes.forEach(cb => cb.checked = !allChecked);
+                    updateSelectedCount(pageId, sectionType);
+                }
+                
+                // Optimize selected blocks (stub for now)
+                function optimizeSelectedBlocks(pageId, sectionType) {
+                    const checkboxes = document.querySelectorAll(`#${sectionType}-blocks-${pageId} input[type="checkbox"]:checked`);
+                    const selectedIds = Array.from(checkboxes).map(cb => cb.value);
+                    
+                    if (selectedIds.length === 0) {
+                        alert('Please select at least one block to optimize');
+                        return;
+                    }
+                    
+                    // TODO: Connect to backend agent
+                    console.log(`🚀 Optimizing ${selectedIds.length} blocks from ${sectionType} section for page ${pageId}`);
+                    console.log('Selected block IDs:', selectedIds);
+                    
+                    // Show placeholder message
+                    alert(`Ready to optimize ${selectedIds.length} ${sectionType} block(s)!\\n\\n(Backend connection coming in next step)`);
+                }
+                
+                // Optimize entire page (stub for now)
+                function optimizeEntirePage(pageId) {
+                    console.log(`🚀 Optimizing entire page ${pageId}`);
+                    
+                    // TODO: Connect to backend agent
+                    alert('Ready to optimize entire page!\\n\\n(Backend connection coming in next step)');
+                }
+                
+                // Helper function to get block type label
+                function getBlockTypeLabel(blockName) {
+                    const labels = {
+                        'core/button': 'Button',
+                        'core/buttons': 'Buttons',
+                        'core/image': 'Image Alt',
+                        'core/gallery': 'Gallery',
+                        'core/video': 'Video',
+                        'core/cover': 'Cover Image',
+                        'core/media-text': 'Media & Text'
+                    };
+                    return labels[blockName] || blockName.replace('core/', '').replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
                 }
 
                 // Tab switching functionality
