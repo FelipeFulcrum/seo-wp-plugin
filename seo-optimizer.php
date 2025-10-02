@@ -38,9 +38,79 @@ class SEO_Optimizer {
         add_action('wp_ajax_enhance_paragraph', array($this, 'ajax_enhance_paragraph'));
         add_action('wp_ajax_replace_paragraph', array($this, 'ajax_replace_paragraph'));
         add_action('wp_ajax_get_page_meta_data', array($this, 'ajax_get_page_meta_data'));
+        add_action('wp_ajax_get_page_full_preview', array($this, 'ajax_get_page_full_preview'));
         add_action('wp_ajax_apply_meta_recommendation', array($this, 'ajax_apply_meta_recommendation'));
+        add_action('wp_ajax_update_meta_data', array($this, 'ajax_update_meta_data'));
         // Add this new line:
         add_action('add_meta_boxes', array($this, 'add_meta_boxes'));
+    }
+    
+    /**
+     * Helper: Log errors if WP_DEBUG_LOG is enabled
+     */
+    private function log_error($message, $context = array()) {
+        if (defined('WP_DEBUG_LOG') && WP_DEBUG_LOG) {
+            error_log('SEO Optimizer: ' . $message . ' ' . print_r($context, true));
+        }
+    }
+    
+    /**
+     * Helper: Get cached API response or fetch new one
+     */
+    private function get_cached_api_response($cache_key, $callback, $ttl = 3600) {
+        $cached = get_transient($cache_key);
+        if ($cached !== false) {
+            $this->log_error('Cache HIT', array('key' => $cache_key));
+            return $cached;
+        }
+        
+        $this->log_error('Cache MISS', array('key' => $cache_key));
+        $result = $callback();
+        
+        if ($result && !is_wp_error($result)) {
+            set_transient($cache_key, $result, $ttl);
+        }
+        
+        return $result;
+    }
+    
+    /**
+     * Helper: Calculate SEO score based on meta data
+     */
+    private function calculate_seo_score($title, $description, $keywords = array()) {
+        $score = 0;
+        
+        // Title scoring (40 points max)
+        $title_length = strlen($title);
+        if ($title_length >= 50 && $title_length <= 60) {
+            $score += 40;
+        } elseif ($title_length >= 40 && $title_length <= 70) {
+            $score += 30;
+        } elseif ($title_length > 0) {
+            $score += 15;
+        }
+        
+        // Description scoring (40 points max)
+        $desc_length = strlen($description);
+        if ($desc_length >= 120 && $desc_length <= 160) {
+            $score += 40;
+        } elseif ($desc_length >= 100 && $desc_length <= 180) {
+            $score += 30;
+        } elseif ($desc_length > 0) {
+            $score += 15;
+        }
+        
+        // Keywords scoring (20 points max)
+        if (!empty($keywords)) {
+            $kw_count = count($keywords);
+            if ($kw_count >= 3 && $kw_count <= 8) {
+                $score += 20;
+            } elseif ($kw_count > 0) {
+                $score += 10;
+            }
+        }
+        
+        return min(100, $score);
     }
     
     /**
@@ -718,6 +788,8 @@ class SEO_Optimizer {
             <script>
                 let currentPageId = null;
                 var pageDataCache = {};
+                var pageBlocksCache = {}; // Store block data for each page
+                var currentEditingBlock = {}; // Track which block is being edited per page
 
                 async function loadPageMetaData(pageId, options = { showGlobal: true, generateAI: true }) {
                     currentPageId = pageId;
@@ -1027,7 +1099,7 @@ class SEO_Optimizer {
                     }
                 }
 
-                // Collapsible per-item optimization panel
+                // NEW: Open block list editor with real block data
                 async function togglePagePanel(pageId) {
                     const panel = document.getElementById(`panel-${pageId}`);
                     const isHidden = panel.classList.contains('hidden');
@@ -1044,140 +1116,695 @@ class SEO_Optimizer {
                         return;
                     }
                     
-                    // If not loaded yet, fetch and render compact editor
+                    // Fetch REAL block data from new endpoint
                     if (!panel.dataset.loaded) {
-                        panel.innerHTML = '<div class="py-4 text-sm text-gray-500">Loading...</div>';
-                        var pageData = pageDataCache[pageId];
-                        if (!pageData) {
-                            pageData = await loadPageMetaData(pageId, { showGlobal: false, generateAI: false });
+                        panel.innerHTML = '<div class="py-4 text-center text-sm text-gray-500"><div class="inline-block animate-pulse">⚙️ Loading page structure...</div></div>';
+                        
+                        try {
+                            // Call new endpoint to get full block structure
+                            const response = await fetch('<?php echo admin_url('admin-ajax.php'); ?>', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                                body: new URLSearchParams({
+                                    action: 'get_page_full_preview',
+                                    page_id: pageId,
+                                    nonce: '<?php echo wp_create_nonce('seo_optimizer_meta_nonce'); ?>'
+                                })
+                            });
+                            
+                            const result = await response.json();
+                            
+                            if (!result.success) {
+                                panel.innerHTML = '<div class="py-4 text-center text-sm text-red-600">Error loading blocks: ' + (result.data || 'Unknown error') + '</div>';
+                                return;
+                            }
+                            
+                            // Store block data
+                            pageBlocksCache[pageId] = result.data;
+                            
+                            // Render block list UI
+                            renderBlockListUI(pageId, result.data);
+                            
+                        } catch (error) {
+                            console.error('Error loading blocks:', error);
+                            panel.innerHTML = '<div class="py-4 text-center text-sm text-red-600">Failed to load page structure</div>';
                         }
                         
-                        const pageTitle = pageData ? (pageData.title || '') : '';
-                        const currentTitle = pageData ? (pageData.current_meta && pageData.current_meta.title ? pageData.current_meta.title : '') : '';
-                        const currentDesc = pageData ? (pageData.current_meta && pageData.current_meta.description ? pageData.current_meta.description : '') : '';
-                        const recTitle = pageData ? (pageData.recommendations && pageData.recommendations.title ? pageData.recommendations.title : '') : '';
-                        const recDesc = pageData ? (pageData.recommendations && pageData.recommendations.description ? pageData.recommendations.description : '') : '';
-                        
-                        panel.innerHTML = `
-                            <div class="border border-gray-200 rounded-lg p-4 bg-gray-50">
-                                <h4 class="text-sm font-semibold text-gray-900 mb-3">Optimize: ${escapeHtmlLocal(pageTitle)}</h4>
-                                
-                                <!-- Optimization Parameters -->
-                                <div class="bg-white border border-gray-200 rounded-lg p-4 mb-3">
-                                    <h5 class="text-sm font-semibold text-gray-900 mb-3">Optimization Parameters</h5>
-                                    
-                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                        <!-- Writing Style -->
-                                        <div>
-                                            <label class="block text-xs font-medium text-gray-700 mb-1">Writing Style & Tone</label>
-                                            <input 
-                                                type="text" 
-                                                id="writing-style-tone-${pageId}" 
-                                                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-primary focus:border-transparent" 
-                                                placeholder="e.g., Professional, conversational...">
-                                        </div>
-                                        
-                                        <!-- Target Audience -->
-                                        <div>
-                                            <label class="block text-xs font-medium text-gray-700 mb-1">Target Audience</label>
-                                            <input 
-                                                type="text" 
-                                                id="target-audience-${pageId}" 
-                                                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-primary focus:border-transparent" 
-                                                placeholder="e.g., Business professionals, consumers...">
-                                        </div>
-                                        
-                                        <!-- Content Goal -->
-                                        <div>
-                                            <label class="block text-xs font-medium text-gray-700 mb-1">Content Goal</label>
-                                            <select 
-                                                id="content-goal-${pageId}" 
-                                                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-primary focus:border-transparent">
-                                                <option value="engagement">Increase Engagement</option>
-                                                <option value="conversion" selected>Drive Conversions</option>
-                                                <option value="information">Provide Information</option>
-                                                <option value="awareness">Build Awareness</option>
-                                            </select>
-                                        </div>
-                                        
-                                        <!-- SEO Focus -->
-                                        <div>
-                                            <label class="block text-xs font-medium text-gray-700 mb-1">SEO Focus</label>
-                                            <select 
-                                                id="seo-focus-${pageId}" 
-                                                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-primary focus:border-transparent">
-                                                <option value="balanced" selected>Balanced</option>
-                                                <option value="keywords">Keyword Heavy</option>
-                                                <option value="readability">Readability First</option>
-                                                <option value="technical">Technical SEO</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <!-- Get Suggestions Button (Initial State) -->
-                                <div id="get-suggestions-container-${pageId}" class="text-center mb-3">
-                                    <button 
-                                        onclick="getSuggestions(${pageId})"
-                                        id="get-suggestions-btn-${pageId}"
-                                        class="inline-flex items-center gap-2 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-semibold py-2.5 px-8 rounded-lg transition-all shadow-md hover:shadow-lg text-sm">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
-                                        </svg>
-                                        <span>Get AI Suggestions</span>
-                                    </button>
-                                    <p class="text-xs text-gray-500 mt-2">Generate SEO-optimized content suggestions</p>
-                                </div>
-                                
-                                <!-- Keywords Selection (Hidden until suggestions load) -->
-                                <div id="keywords-section-${pageId}" class="hidden mt-3">
-                                    <div class="bg-white border border-gray-200 rounded-lg p-3 mb-3">
-                                        <label class="block text-xs font-medium text-gray-700 mb-2">Select Keywords to Use</label>
-                                        <p class="text-xs text-gray-500 mb-2">Click keywords to toggle selection (Blue = selected)</p>
-                                        <div id="keywords-chips-${pageId}" class="flex flex-wrap gap-2">
-                                            <!-- Keywords will be populated here -->
-                                        </div>
-                                    </div>
-                                    
-                                    <!-- Action Buttons -->
-                                    <div class="flex gap-2 justify-center">
-                                        <button 
-                                            onclick="processAgain(${pageId})"
-                                            id="process-again-btn-${pageId}"
-                                            class="bg-purple-accent hover:bg-purple-700 text-white font-medium py-1.5 px-4 rounded-lg flex items-center gap-1.5 transition-all text-sm">
-                                            <span>🔄</span>
-                                            <span>Process Again</span>
-                                        </button>
-                                    </div>
-                                </div>
-                                
-                                <!-- Divider with Apply All -->
-                                <div id="content-divider-${pageId}" class="hidden flex items-center justify-between my-4">
-                                    <div class="flex items-center gap-3 flex-1">
-                                        <div class="flex-1 border-t border-gray-300"></div>
-                                        <span class="text-xs text-gray-500 font-medium">AI SUGGESTIONS</span>
-                                        <div class="flex-1 border-t border-gray-300"></div>
-                                    </div>
-                                    <button 
-                                        onclick="applyAllSuggestions(${pageId})"
-                                        class="ml-3 text-blue-primary hover:text-blue-dark text-sm font-medium flex items-center gap-1 px-3 py-1 border border-blue-primary rounded hover:bg-blue-50 transition-colors whitespace-nowrap">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                                        </svg>
-                                        Apply All
-                                    </button>
-                                </div>
-                                
-                                <!-- Suggestions Cards Container -->
-                                <div id="suggestions-container-${pageId}" class="space-y-3">
-                                    <!-- Suggestion cards will be dynamically added here -->
-                                </div>
-                                
-                            </div>`;
                         panel.dataset.loaded = '1';
                     }
                     
                     panel.classList.remove('hidden');
+                }
+                
+                // Render block list UI (2-column layout)
+                function renderBlockListUI(pageId, data) {
+                    const panel = document.getElementById(`panel-${pageId}`);
+                    if (!panel) return;
+                    
+                    const { page_title, blocks, stats } = data;
+                    
+                    // Group blocks by category
+                    const metaBlocks = blocks.filter(b => b.block_category === 'meta');
+                    const contentBlocks = blocks.filter(b => b.block_category === 'content');
+                    const ctaBlocks = blocks.filter(b => b.block_category === 'cta');
+                    const mediaBlocks = blocks.filter(b => b.block_category === 'media');
+                    
+                    // Build block cards HTML
+                    const metaHTML = metaBlocks.length > 0 ? renderBlockSection('Meta Information', '📋', metaBlocks, pageId, stats) : '';
+                    const contentHTML = contentBlocks.length > 0 ? renderBlockSection('Content Blocks', '📝', contentBlocks, pageId, stats) : '';
+                    const ctaHTML = ctaBlocks.length > 0 ? renderBlockSection('Calls to Action', '🎯', ctaBlocks, pageId, stats) : '';
+                    const mediaHTML = mediaBlocks.length > 0 ? renderBlockSection('Media Elements', '🖼️', mediaBlocks, pageId, stats) : '';
+                        
+                    // Calculate average SEO score
+                    const blocksWithScores = blocks.filter(b => b.seo_score !== undefined);
+                    const avgScore = blocksWithScores.length > 0 
+                        ? Math.round(blocksWithScores.reduce((sum, b) => sum + b.seo_score, 0) / blocksWithScores.length)
+                        : 0;
+                    
+                    const scoreColor = avgScore >= 80 ? 'text-green-600' : (avgScore >= 50 ? 'text-orange-600' : 'text-red-600');
+                    const scoreLabel = avgScore >= 80 ? 'Excellent' : (avgScore >= 50 ? 'Good' : 'Needs Work');
+                        
+                        panel.innerHTML = `
+                        <div class="bg-white border border-gray-200 rounded-lg shadow-sm p-6">
+                            <!-- Header with SEO Stats -->
+                            <div class="flex items-center justify-between mb-6">
+                                <div class="flex-1">
+                                    <h3 class="text-lg font-semibold text-gray-900">${escapeHtmlLocal(page_title)}</h3>
+                                    <div class="flex items-center gap-4 mt-2">
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-xs text-gray-500">SEO Score:</span>
+                                            <span class="${scoreColor} text-sm font-bold">${avgScore}/100</span>
+                                            <span class="text-xs ${scoreColor} font-medium">${scoreLabel}</span>
+                                        </div>
+                                        <div class="text-xs text-gray-400">•</div>
+                                        <div class="text-xs text-gray-500">
+                                            ${stats.editable} optimizable blocks
+                                        </div>
+                                        <div class="text-xs text-gray-400">•</div>
+                                        <div class="text-xs text-green-600 font-medium">
+                                            ${stats.optimized} optimized
+                                        </div>
+                                    </div>
+                                </div>
+                                <button onclick="document.getElementById('panel-${pageId}').classList.add('hidden')" class="text-gray-400 hover:text-gray-600">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                            
+                            <!-- View Mode Toggle -->
+                            <div class="mb-4 flex items-center gap-2">
+                                <button 
+                                    id="list-view-btn-${pageId}"
+                                    onclick="switchToListView(${pageId})"
+                                    class="px-4 py-2 text-sm font-medium text-white bg-blue-primary rounded-lg">
+                                    📋 List View
+                                </button>
+                                <button 
+                                    id="visual-view-btn-${pageId}"
+                                    onclick="switchToVisualView(${pageId})"
+                                    class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200">
+                                    📄 Visual Preview
+                                </button>
+                                <span class="text-xs text-gray-500 ml-2">Click any element in visual mode to optimize</span>
+                            </div>
+                            
+                            <!-- Block List (Full Width) -->
+                            <div id="blocks-panel-${pageId}" class="space-y-6">
+                                ${metaHTML}
+                                ${contentHTML}
+                                ${ctaHTML}
+                                ${mediaHTML}
+                            </div>
+                            
+                            <!-- Visual Preview Mode (Hidden by default) -->
+                            <div id="visual-preview-${pageId}" class="hidden">
+                                <div class="bg-gradient-to-br from-blue-50 to-gray-50 border-2 border-dashed border-blue-200 rounded-lg p-8">
+                                    <div class="bg-white rounded-lg shadow-sm p-6 max-w-4xl mx-auto">
+                                        <div id="visual-content-${pageId}" class="prose max-w-none">
+                                            <!-- Content will be loaded here -->
+                                        </div>
+                                    </div>
+                                    <div class="text-center mt-4 text-xs text-gray-500">
+                                        💡 Hover over elements to highlight • Click to optimize with AI
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Optimization Sidebar (Sleek, Professional Design inspired by RankBuildr) -->
+                            <div id="sidebar-${pageId}" class="fixed top-0 right-0 h-full w-72 bg-white shadow-2xl border-l border-gray-200 transform translate-x-full transition-transform duration-300 ease-in-out z-50 overflow-y-auto" style="max-width: 90vw;">
+                                <!-- Sidebar content loaded dynamically -->
+                            </div>
+                                        </div>
+                    `;
+                    
+                    // After rendering, load visual preview data if needed
+                    loadVisualPreviewData(pageId, data);
+                }
+                
+                // Load and prepare visual preview data
+                function loadVisualPreviewData(pageId, data) {
+                    // Store for later use when switching to visual view
+                    if (!window.visualPreviewData) window.visualPreviewData = {};
+                    window.visualPreviewData[pageId] = data;
+                }
+                
+                // Switch to List View
+                function switchToListView(pageId) {
+                    document.getElementById(`blocks-panel-${pageId}`).classList.remove('hidden');
+                    document.getElementById(`visual-preview-${pageId}`).classList.add('hidden');
+                    
+                    // Update button styles
+                    document.getElementById(`list-view-btn-${pageId}`).className = 'px-4 py-2 text-sm font-medium text-white bg-blue-primary rounded-lg';
+                    document.getElementById(`visual-view-btn-${pageId}`).className = 'px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200';
+                }
+                
+                // Switch to Visual Preview
+                function switchToVisualView(pageId) {
+                    document.getElementById(`blocks-panel-${pageId}`).classList.add('hidden');
+                    document.getElementById(`visual-preview-${pageId}`).classList.remove('hidden');
+                    
+                    // Update button styles
+                    document.getElementById(`list-view-btn-${pageId}`).className = 'px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200';
+                    document.getElementById(`visual-view-btn-${pageId}`).className = 'px-4 py-2 text-sm font-medium text-white bg-blue-primary rounded-lg';
+                    
+                    // Render visual preview if not already rendered
+                    if (!document.getElementById(`visual-content-${pageId}`).dataset.rendered) {
+                        renderVisualPreview(pageId);
+                    }
+                }
+                
+                // Render Visual Preview with clickable blocks
+                function renderVisualPreview(pageId) {
+                    const data = window.visualPreviewData?.[pageId];
+                    if (!data) return;
+                    
+                    const { blocks, html_content } = data;
+                    const container = document.getElementById(`visual-content-${pageId}`);
+                    
+                    // Create HTML preview with clickable blocks
+                    let previewHTML = '';
+                    
+                    // Group blocks by category for organized display
+                    const metaBlocks = blocks.filter(b => b.block_category === 'meta');
+                    const contentBlocks = blocks.filter(b => b.block_category === 'content');
+                    const ctaBlocks = blocks.filter(b => b.block_category === 'cta');
+                    
+                    // Meta blocks (special styling)
+                    metaBlocks.forEach(block => {
+                        const statusColor = block.status === 'optimized' ? 'border-green-300 bg-green-50' : 
+                                           block.status === 'needs_optimization' ? 'border-orange-300 bg-orange-50' : 
+                                           'border-red-300 bg-red-50';
+                        
+                        previewHTML += `
+                            <div class="visual-block mb-3 p-3 border-2 ${statusColor} rounded-lg cursor-pointer transition-all hover:shadow-md"
+                                 data-block-id="${block.block_id}"
+                                 onclick="openBlockSidebarFromVisual('${pageId}', '${block.block_id}')">
+                                <div class="text-xs font-semibold text-gray-500 mb-1">${block.block_type}</div>
+                                <div class="text-sm font-medium text-gray-900">${escapeHtmlLocal(block.current_content)}</div>
+                                <div class="text-xs text-gray-500 mt-1">${block.char_count} characters</div>
+                            </div>
+                        `;
+                    });
+                    
+                    // Content blocks (look like actual page elements)
+                    contentBlocks.forEach(block => {
+                        let elementHTML = '';
+                        
+                        if (block.block_type === 'H1') {
+                            elementHTML = `<h1 class="text-4xl font-bold text-gray-900 mb-4">${escapeHtmlLocal(block.current_content)}</h1>`;
+                        } else if (block.block_type === 'H2') {
+                            elementHTML = `<h2 class="text-3xl font-semibold text-gray-800 mb-3">${escapeHtmlLocal(block.current_content)}</h2>`;
+                        } else if (block.block_type === 'H3') {
+                            elementHTML = `<h3 class="text-2xl font-semibold text-gray-700 mb-2">${escapeHtmlLocal(block.current_content)}</h3>`;
+                        } else if (block.block_type === 'Paragraph') {
+                            elementHTML = `<p class="text-base text-gray-700 mb-4 leading-relaxed">${escapeHtmlLocal(block.current_content)}</p>`;
+                        }
+                        
+                        const statusBorder = block.status === 'optimized' ? 'hover:border-green-400' : 
+                                            block.status === 'needs_optimization' ? 'hover:border-orange-400' : 
+                                            'hover:border-red-400';
+                        
+                        previewHTML += `
+                            <div class="visual-block mb-4 p-3 border-2 border-transparent rounded-lg cursor-pointer transition-all ${statusBorder} hover:bg-blue-50 hover:border-blue-400"
+                                 data-block-id="${block.block_id}"
+                                 onclick="openBlockSidebarFromVisual('${pageId}', '${block.block_id}')"
+                                 onmouseover="this.style.borderColor='#3b82f6'; this.style.backgroundColor='#eff6ff';"
+                                 onmouseout="if(!this.classList.contains('active-block')){this.style.borderColor='transparent'; this.style.backgroundColor='transparent';}">
+                                ${elementHTML}
+                                <div class="text-xs text-gray-400 mt-1">✏️ Click to optimize</div>
+                            </div>
+                        `;
+                    });
+                    
+                    // CTA blocks
+                    ctaBlocks.forEach(block => {
+                        const statusBorder = block.status === 'optimized' ? 'hover:border-green-400' : 
+                                            block.status === 'needs_optimization' ? 'hover:border-orange-400' : 
+                                            'hover:border-red-400';
+                        
+                        previewHTML += `
+                            <div class="visual-block mb-4 p-3 border-2 border-transparent rounded-lg cursor-pointer transition-all ${statusBorder} hover:bg-blue-50 hover:border-blue-400"
+                                 data-block-id="${block.block_id}"
+                                 onclick="openBlockSidebarFromVisual('${pageId}', '${block.block_id}')"
+                                 onmouseover="this.style.borderColor='#3b82f6'; this.style.backgroundColor='#eff6ff';"
+                                 onmouseout="if(!this.classList.contains('active-block')){this.style.borderColor='transparent'; this.style.backgroundColor='transparent';}">
+                                <button class="px-6 py-3 bg-blue-primary text-white rounded-lg font-medium hover:bg-blue-600 pointer-events-none">
+                                    ${escapeHtmlLocal(block.current_content)}
+                                </button>
+                                <div class="text-xs text-gray-400 mt-2">✏️ Click to optimize</div>
+                            </div>
+                        `;
+                    });
+                    
+                    container.innerHTML = previewHTML || '<p class="text-gray-500 text-center py-8">No content blocks found</p>';
+                    container.dataset.rendered = '1';
+                }
+                
+                // Open sidebar from visual preview
+                function openBlockSidebarFromVisual(pageId, blockId) {
+                    // Remove active class from all blocks
+                    document.querySelectorAll('.visual-block').forEach(el => {
+                        el.classList.remove('active-block');
+                        el.style.borderColor = 'transparent';
+                        el.style.backgroundColor = 'transparent';
+                    });
+                    
+                    // Highlight clicked block
+                    const clickedBlock = document.querySelector(`.visual-block[data-block-id="${blockId}"]`);
+                    if (clickedBlock) {
+                        clickedBlock.classList.add('active-block');
+                        clickedBlock.style.borderColor = '#3b82f6';
+                        clickedBlock.style.backgroundColor = '#dbeafe';
+                    }
+                    
+                    // Open sidebar
+                    openBlockSidebar(pageId, blockId);
+                }
+                
+                // Render block section (collapsible)
+                function renderBlockSection(title, icon, blocks, pageId, stats) {
+                    const sectionId = title.replace(/\s+/g, '-').toLowerCase();
+                    const blockCards = blocks.map(block => renderBlockCard(block, pageId)).join('');
+                    
+                    return `
+                        <div class="block-section">
+                            <button onclick="toggleBlockSection('${pageId}', '${sectionId}')" class="w-full flex items-center justify-between mb-3 hover:bg-gray-50 p-2 rounded-lg transition-colors">
+                                <h4 class="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                                    <svg id="chevron-${pageId}-${sectionId}" class="w-4 h-4 text-gray-500 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                                    </svg>
+                                    <span>${icon}</span>
+                                    <span>${title}</span>
+                                    <span class="text-xs font-normal text-gray-500">(${blocks.length})</span>
+                                </h4>
+                            </button>
+                            <div id="section-${pageId}-${sectionId}" class="hidden space-y-2 pl-2">
+                                ${blockCards}
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                // Toggle block section expand/collapse
+                function toggleBlockSection(pageId, sectionId) {
+                    const section = document.getElementById(`section-${pageId}-${sectionId}`);
+                    const chevron = document.getElementById(`chevron-${pageId}-${sectionId}`);
+                    
+                    if (section && chevron) {
+                        section.classList.toggle('hidden');
+                        if (section.classList.contains('hidden')) {
+                            chevron.style.transform = 'rotate(0deg)';
+                        } else {
+                            chevron.style.transform = 'rotate(0deg)';
+                        }
+                    }
+                }
+                
+                // Render individual block card with SMART FILTERING
+                function renderBlockCard(block, pageId) {
+                    const statusColor = {
+                        'optimized': 'text-green-600',
+                        'needs_optimization': 'text-orange-600',
+                        'not_optimized': 'text-red-600'
+                    }[block.status] || 'text-red-600';
+                    
+                    const statusText = {
+                        'optimized': 'Optimized',
+                        'needs_optimization': 'In Progress',
+                        'not_optimized': 'Needs Review'
+                    }[block.status] || 'Needs Review';
+                    
+                    // SMART LABEL: Show first 40 chars instead of generic "H2-1"
+                    const smartLabel = block.current_content.length > 40 
+                        ? block.current_content.substring(0, 40) + '...' 
+                        : block.current_content;
+                    
+                    const previewText = block.current_content.length > 100 
+                        ? block.current_content.substring(0, 100) + '...' 
+                        : block.current_content;
+                    
+                    // PRIORITY BADGE: Calculate importance based on content length + type
+                    let priorityBadge = '';
+                    let priorityLevel = 'low';
+                    
+                    if (block.block_category === 'meta') {
+                        // Meta blocks are always high priority
+                        priorityLevel = block.seo_score < 80 ? 'high' : 'low';
+                    } else if (block.block_type.includes('H1')) {
+                        // H1 always high priority
+                        priorityLevel = block.char_count < 30 || block.char_count > 70 ? 'high' : 'medium';
+                    } else if (block.block_type.includes('H2') || block.block_type.includes('H3')) {
+                        // H2/H3 medium priority if too short/long
+                        priorityLevel = block.char_count < 20 || block.char_count > 80 ? 'medium' : 'low';
+                    } else if (block.block_type === 'Paragraph') {
+                        // Long paragraphs need work
+                        priorityLevel = block.char_count > 200 ? 'medium' : 'low';
+                    }
+                    
+                    if (priorityLevel === 'high') {
+                        priorityBadge = `<span class="text-xs font-medium px-1.5 py-0.5 rounded bg-red-100 text-red-700">🔴 Priority</span>`;
+                    } else if (priorityLevel === 'medium') {
+                        priorityBadge = `<span class="text-xs font-medium px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700">🟡 Review</span>`;
+                    }
+                    
+                    const seoScoreBadge = block.seo_score !== undefined 
+                        ? `<span class="text-xs font-medium px-2 py-1 rounded ${block.seo_score >= 80 ? 'bg-green-100 text-green-700' : (block.seo_score >= 50 ? 'bg-orange-100 text-orange-700' : 'bg-red-100 text-red-700')}">${block.seo_score}/100</span>`
+                        : '';
+                    
+                    // Special rendering for images (with smart labels)
+                    if (block.block_category === 'media' && block.thumbnail_url) {
+                        return `
+                            <div class="block-card border border-gray-200 rounded-lg p-2.5 hover:bg-gray-50 transition-colors bg-white cursor-pointer" 
+                                 data-block-id="${block.block_id}"
+                                 onclick="if(!event.target.closest('a')){toggleBlockExpand('${pageId}', '${block.block_id}')}">
+                                <div class="flex items-start gap-3">
+                                    <img src="${block.thumbnail_url}" alt="" class="w-12 h-12 object-cover rounded border border-gray-200" />
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-center gap-1.5">
+                                            <span class="text-xs font-semibold text-gray-900">${block.block_type}</span>
+                                            <span class="${statusColor} text-xs font-medium">${statusText}</span>
+                                            ${priorityBadge}
+                                            ${block.editable 
+                                                ? `<a href="javascript:void(0)" 
+                                                      onclick="event.stopPropagation(); openBlockSidebar('${pageId}', '${block.block_id}')" 
+                                                      class="text-blue-primary hover:text-blue-dark text-xs font-medium">
+                                                      Edit
+                                                   </a>`
+                                                : ``
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- Preview (expanded state - only visible when clicked) -->
+                                <div id="block-preview-${pageId}-${block.block_id}" class="hidden mt-2 pt-2 border-t border-gray-100">
+                                    <p class="text-xs text-gray-600">Alt: ${escapeHtmlLocal(block.current_content) || '(empty)'}</p>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    
+                    return `
+                        <div class="block-card border border-gray-200 rounded-lg p-2.5 hover:bg-gray-50 transition-colors bg-white cursor-pointer" 
+                             data-block-id="${block.block_id}"
+                             onclick="if(!event.target.closest('a')){toggleBlockExpand('${pageId}', '${block.block_id}')}">
+                            <!-- SMART LABEL: Show content preview instead of "H2-1" -->
+                            <div class="flex items-center gap-1.5 mb-1">
+                                <span class="text-xs text-gray-500">${block.block_type}</span>
+                                <span class="${statusColor} text-xs font-medium">${statusText}</span>
+                                ${seoScoreBadge}
+                                ${priorityBadge}
+                                ${block.editable 
+                                    ? `<a href="javascript:void(0)" 
+                                          onclick="event.stopPropagation(); openBlockSidebar('${pageId}', '${block.block_id}')" 
+                                          class="text-blue-primary hover:text-blue-dark text-xs font-medium">
+                                          Edit
+                                       </a>`
+                                    : ``
+                                }
+                            </div>
+                            <div class="text-xs font-medium text-gray-900 leading-snug">${escapeHtmlLocal(smartLabel)}</div>
+                            <!-- Preview text (hidden by default, shows ONLY when block is clicked/expanded) -->
+                            <div id="block-preview-${pageId}-${block.block_id}" class="hidden mt-2 pt-2 border-t border-gray-100">
+                                <p class="text-xs text-gray-700 leading-relaxed">${escapeHtmlLocal(previewText)}</p>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                // Toggle block preview expand/collapse (auto-close others)
+                function toggleBlockExpand(pageId, blockId) {
+                    const previewDiv = document.getElementById(`block-preview-${pageId}-${blockId}`);
+                    
+                    // Close all other block previews in this page
+                    document.querySelectorAll(`[id^="block-preview-${pageId}-"]`).forEach(div => {
+                        if (div.id !== `block-preview-${pageId}-${blockId}`) {
+                            div.classList.add('hidden');
+                        }
+                    });
+                    
+                    // Toggle the clicked block
+                    if (previewDiv) {
+                        previewDiv.classList.toggle('hidden');
+                    }
+                }
+                
+                // Open sidebar for specific block with slide-in animation (with state persistence)
+                async function openBlockSidebar(pageId, blockId) {
+                    const sidebar = document.getElementById(`sidebar-${pageId}`);
+                    
+                    if (!sidebar) return;
+                    
+                    // Save current sidebar state if switching blocks
+                    const previousBlockId = currentEditingBlock[pageId];
+                    if (previousBlockId && previousBlockId !== blockId) {
+                        saveSidebarState(pageId, previousBlockId);
+                        // Remove highlight from previous block
+                        const prevCard = document.querySelector(`[data-block-id="${previousBlockId}"]`);
+                        if (prevCard) {
+                            prevCard.classList.remove('ring-2', 'ring-blue-primary', 'bg-blue-50');
+                        }
+                    }
+                    
+                    // Store current editing block
+                    currentEditingBlock[pageId] = blockId;
+                    
+                    // Highlight current block being edited
+                    document.querySelectorAll(`[data-block-id]`).forEach(card => {
+                        card.classList.remove('ring-2', 'ring-blue-primary', 'bg-blue-50');
+                    });
+                    const currentCard = document.querySelector(`[data-block-id="${blockId}"]`);
+                    if (currentCard) {
+                        currentCard.classList.add('ring-2', 'ring-blue-primary', 'bg-blue-50');
+                    }
+                    
+                    // Get block data
+                    const blockData = pageBlocksCache[pageId]?.blocks.find(b => b.block_id === blockId);
+                    if (!blockData) return;
+                    
+                    // Check if sidebar is already open
+                    const isAlreadyOpen = !sidebar.classList.contains('translate-x-full');
+                    
+                    // Render sidebar content (ALWAYS render to update content)
+                    renderSidebar(pageId, blockData);
+                    
+                    // Restore saved state if exists
+                    restoreSidebarState(pageId, blockId);
+                    
+                    // Slide in sidebar with animation (only if not already open)
+                    if (!isAlreadyOpen) {
+                        setTimeout(() => {
+                            sidebar.classList.remove('translate-x-full');
+                            sidebar.classList.add('translate-x-0');
+                        }, 10);
+                    }
+                }
+                
+                // Save sidebar input state (including AI suggestions)
+                function saveSidebarState(pageId, blockId) {
+                    const stateKey = `${pageId}-${blockId}`;
+                    
+                    // Check if keywords and enhanced content sections are visible
+                    const keywordsSection = document.getElementById(`sidebar-keywords-section-${pageId}`);
+                    const enhancedSection = document.getElementById(`sidebar-enhanced-section-${pageId}`);
+                    
+                    sidebarStateCache[stateKey] = {
+                        writingStyle: document.getElementById(`sidebar-writing-style-${pageId}`)?.value || '',
+                        targetAudience: document.getElementById(`sidebar-target-audience-${pageId}`)?.value || '',
+                        contentGoal: document.getElementById(`sidebar-content-goal-${pageId}`)?.value || 'conversion',
+                        seoFocus: document.getElementById(`sidebar-seo-focus-${pageId}`)?.value || 'balanced',
+                        hasKeywords: keywordsSection && !keywordsSection.classList.contains('hidden'),
+                        hasEnhanced: enhancedSection && !enhancedSection.classList.contains('hidden')
+                    };
+                }
+                
+                // Restore sidebar input state (including AI suggestions)
+                function restoreSidebarState(pageId, blockId) {
+                    const stateKey = `${pageId}-${blockId}`;
+                    const savedState = sidebarStateCache[stateKey];
+                    
+                    if (savedState) {
+                        // Restore input values
+                        const writingStyleInput = document.getElementById(`sidebar-writing-style-${pageId}`);
+                        const targetAudienceInput = document.getElementById(`sidebar-target-audience-${pageId}`);
+                        const contentGoalSelect = document.getElementById(`sidebar-content-goal-${pageId}`);
+                        const seoFocusSelect = document.getElementById(`sidebar-seo-focus-${pageId}`);
+                        
+                        if (writingStyleInput) writingStyleInput.value = savedState.writingStyle;
+                        if (targetAudienceInput) targetAudienceInput.value = savedState.targetAudience;
+                        if (contentGoalSelect) contentGoalSelect.value = savedState.contentGoal;
+                        if (seoFocusSelect) seoFocusSelect.value = savedState.seoFocus;
+                        
+                        // Restore AI suggestions if they were shown
+                        if (savedState.hasKeywords && pageSuggestionsCache[pageId]?.[blockId]) {
+                            const suggestion = pageSuggestionsCache[pageId][blockId];
+                            renderSidebarKeywords(pageId, suggestion.keywords);
+                        }
+                        
+                        if (savedState.hasEnhanced && pageSuggestionsCache[pageId]?.[blockId]) {
+                            const enhancedSection = document.getElementById(`sidebar-enhanced-section-${pageId}`);
+                            const enhancedContentDiv = document.getElementById(`sidebar-enhanced-content-${pageId}`);
+                            const suggestion = pageSuggestionsCache[pageId][blockId];
+                            
+                            if (enhancedSection && enhancedContentDiv && suggestion) {
+                                enhancedContentDiv.textContent = suggestion.enhanced_content;
+                                enhancedSection.classList.remove('hidden');
+                            }
+                        }
+                    }
+                }
+                
+                // Close sidebar with slide-out animation (NO OVERLAY)
+                function closeSidebar(pageId) {
+                    const sidebar = document.getElementById(`sidebar-${pageId}`);
+                    
+                    if (!sidebar) return;
+                    
+                    // Slide out sidebar
+                    sidebar.classList.remove('translate-x-0');
+                    sidebar.classList.add('translate-x-full');
+                    
+                    currentEditingBlock[pageId] = null;
+                }
+                
+                // Render sidebar UI
+                function renderSidebar(pageId, blockData) {
+                    const sidebar = document.getElementById(`sidebar-${pageId}`);
+                    if (!sidebar) return;
+                    
+                    sidebar.innerHTML = `
+                        <div class="bg-white h-full flex flex-col">
+                            <!-- Compact Header (RankBuildr style) -->
+                            <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">${blockData.block_type}</span>
+                                </div>
+                                <button onclick="closeSidebar(${pageId})" class="text-gray-400 hover:text-gray-600 transition-colors">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                            
+                            <!-- Scrollable Content -->
+                            <div class="flex-1 overflow-y-auto px-4 py-4">
+                                <!-- Current Content Preview (Compact) -->
+                                <div class="mb-4">
+                                    <label class="block text-xs font-medium text-gray-500 mb-1.5">Current Content</label>
+                                    <div class="bg-gray-50 rounded-md p-2.5 border border-gray-200">
+                                        <p class="text-xs text-gray-700 leading-relaxed line-clamp-3">
+                                            ${escapeHtmlLocal(blockData.current_content)}
+                                        </p>
+                                        <span class="text-xs text-gray-400 mt-1.5 inline-block">${blockData.char_count} chars</span>
+                                    </div>
+                                </div>
+                                
+                                <!-- Compact Parameters (Single Column) -->
+                                <div class="space-y-2.5 mb-4">
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-700 mb-1">Writing Style</label>
+                                        <input type="text" id="sidebar-writing-style-${pageId}" 
+                                            class="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-primary focus:border-blue-primary"
+                                            placeholder="e.g., Professional, conversational">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-gray-700 mb-1">Target Audience</label>
+                                        <input type="text" id="sidebar-target-audience-${pageId}"
+                                            class="w-full px-2.5 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-primary focus:border-blue-primary"
+                                            placeholder="e.g., Business professionals">
+                                        </div>
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-700 mb-1">Goal</label>
+                                            <select id="sidebar-content-goal-${pageId}"
+                                                class="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-primary">
+                                                <option value="conversion">Conversion</option>
+                                                <option value="engagement">Engagement</option>
+                                                <option value="information">Information</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-700 mb-1">SEO Focus</label>
+                                            <select id="sidebar-seo-focus-${pageId}"
+                                                class="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-primary">
+                                                <option value="balanced">Balanced</option>
+                                                <option value="keywords">Keywords</option>
+                                                <option value="readability">Readability</option>
+                                            </select>
+                                        </div>
+                                        </div>
+                                        </div>
+                                
+                                <!-- Get Suggestions Button (Small, Classic) -->
+                                <button onclick="getSuggestionsForBlock(${pageId})" id="sidebar-get-suggestions-btn-${pageId}"
+                                    class="w-full bg-blue-primary hover:bg-blue-dark text-white font-medium py-1.5 px-3 rounded text-xs mb-3 transition-colors">
+                                    Get AI Suggestions
+                                </button>
+                                
+                                <!-- Progress Bar (Hidden initially) -->
+                                <div id="sidebar-progress-${pageId}" class="hidden mb-3">
+                                    <div class="flex items-center justify-between text-xs text-gray-600 mb-1">
+                                        <span id="sidebar-progress-text-${pageId}">Processing...</span>
+                                        <span id="sidebar-progress-percent-${pageId}">0%</span>
+                                    </div>
+                                    <div class="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
+                                        <div id="sidebar-progress-bar-${pageId}" class="bg-blue-primary h-full rounded-full transition-all duration-300" style="width: 0%"></div>
+                                </div>
+                                </div>
+                                
+                                <!-- Keywords Section (Compact) -->
+                                <div id="sidebar-keywords-section-${pageId}" class="hidden mb-4">
+                                    <label class="block text-xs font-medium text-gray-700 mb-1.5">Selected Keywords</label>
+                                    <div id="sidebar-keywords-chips-${pageId}" class="flex flex-wrap gap-1.5">
+                                        <!-- Keywords populated here -->
+                                    </div>
+                                </div>
+                                
+                                <!-- Enhanced Content (Compact) -->
+                                <div id="sidebar-enhanced-section-${pageId}" class="hidden">
+                                    <label class="block text-xs font-medium text-gray-700 mb-1.5">AI Enhanced</label>
+                                    <div class="bg-green-50 rounded-md p-2.5 border border-green-200 mb-3">
+                                        <div id="sidebar-enhanced-content-${pageId}" class="text-xs text-gray-900 leading-relaxed max-h-40 overflow-y-auto">
+                                            <!-- Enhanced content here -->
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Compact Action Buttons -->
+                                    <div class="flex gap-2">
+                                        <button onclick="processAgainBlock(${pageId})" 
+                                            class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-1.5 px-3 rounded-md text-xs transition-colors">
+                                            🔄 Reprocess
+                                        </button>
+                                        <button onclick="applyBlockOptimization(${pageId})"
+                                            class="flex-1 bg-green-600 hover:bg-green-700 text-white font-medium py-1.5 px-3 rounded-md text-xs transition-colors">
+                                            ✓ Apply
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
                 }
 
                 function escapeHtmlLocal(v){
@@ -1188,12 +1815,333 @@ class SEO_Optimizer {
                 }
 
                 // ========================================
-                // NEW: Suggestion-Based Content Optimizer
+                // AI BACKEND INTEGRATION
                 // ========================================
                 
-                // Store suggestions data per page
+                // Store suggestions data per page/block
                 const pageSuggestionsCache = {};
                 const selectedKeywordsCache = {};
+                const sidebarStateCache = {}; // Store sidebar input states per block
+                
+                // Get AI suggestions for specific block (REAL BACKEND)
+                async function getSuggestionsForBlock(pageId) {
+                    const blockId = currentEditingBlock[pageId];
+                    if (!blockId) return;
+                    
+                    const btn = document.getElementById(`sidebar-get-suggestions-btn-${pageId}`);
+                    const progressContainer = document.getElementById(`sidebar-progress-${pageId}`);
+                    const progressBar = document.getElementById(`sidebar-progress-bar-${pageId}`);
+                    const progressText = document.getElementById(`sidebar-progress-text-${pageId}`);
+                    const progressPercent = document.getElementById(`sidebar-progress-percent-${pageId}`);
+                    
+                    // Disable button and show progress bar
+                    if (btn) {
+                        btn.disabled = true;
+                        btn.classList.add('opacity-50', 'cursor-not-allowed');
+                    }
+                    
+                    if (progressContainer) {
+                        progressContainer.classList.remove('hidden');
+                    }
+                    
+                    // Simulate progress (since we don't have real progress from API)
+                    let progress = 0;
+                    const progressInterval = setInterval(() => {
+                        progress += Math.random() * 15;
+                        if (progress > 90) progress = 90; // Stop at 90% until complete
+                        
+                        if (progressBar) progressBar.style.width = progress + '%';
+                        if (progressPercent) progressPercent.textContent = Math.round(progress) + '%';
+                        
+                        // Update text based on progress
+                        if (progressText) {
+                            if (progress < 30) {
+                                progressText.textContent = 'Analyzing content...';
+                            } else if (progress < 60) {
+                                progressText.textContent = 'Generating keywords...';
+                            } else {
+                                progressText.textContent = 'Optimizing with AI...';
+                            }
+                        }
+                    }, 200);
+                    
+                    try {
+                        // Get parameters from sidebar
+                        const writingStyle = document.getElementById(`sidebar-writing-style-${pageId}`)?.value || '';
+                        const targetAudience = document.getElementById(`sidebar-target-audience-${pageId}`)?.value || '';
+                        const contentGoal = document.getElementById(`sidebar-content-goal-${pageId}`)?.value || 'conversion';
+                        const seoFocus = document.getElementById(`sidebar-seo-focus-${pageId}`)?.value || 'balanced';
+                        
+                        // Get block data
+                        const blockData = pageBlocksCache[pageId]?.blocks.find(b => b.block_id === blockId);
+                        if (!blockData) {
+                            throw new Error('Block data not found');
+                        }
+                        
+                        // Get page HTML content
+                        const htmlContent = pageBlocksCache[pageId]?.html_content || '';
+                        
+                        console.log('🚀 Calling AI Backend for block:', {
+                            blockId,
+                            blockType: blockData.block_type,
+                            writingStyle,
+                            targetAudience,
+                            contentGoal,
+                            seoFocus
+                        });
+                        
+                        // Call REAL AI backend (aiGenMeta handles meta blocks)
+                        const aiData = await aiGenMeta({
+                            title: blockData.current_content,
+                            description: blockData.block_type === 'Meta Description' ? blockData.current_content : '',
+                            content: htmlContent,
+                            id: String(pageId)
+                        }, pageId);
+                        
+                        if (aiData) {
+                            const keywords = aiData.trending_keywords || [];
+                            
+                            // Determine enhanced content based on block type
+                            let enhancedContent = '';
+                            if (blockId === 'meta-title') {
+                                enhancedContent = aiData.meta_title;
+                            } else if (blockId === 'meta-description') {
+                                enhancedContent = aiData.meta_description;
+                            } else {
+                                // For content blocks, use meta_title as a proxy (will be replaced with real backend later)
+                                enhancedContent = aiData.meta_title;
+                            }
+                            
+                            // Store suggestion
+                            if (!pageSuggestionsCache[pageId]) {
+                                pageSuggestionsCache[pageId] = {};
+                            }
+                            pageSuggestionsCache[pageId][blockId] = {
+                                enhanced_content: enhancedContent,
+                                keywords: keywords,
+                                block_type: blockData.block_type
+                            };
+                            
+                            selectedKeywordsCache[pageId] = keywords;
+                            
+                            // Render keywords
+                            renderSidebarKeywords(pageId, keywords);
+                            
+                            // Render enhanced content
+                            const enhancedSection = document.getElementById(`sidebar-enhanced-section-${pageId}`);
+                            const enhancedContentDiv = document.getElementById(`sidebar-enhanced-content-${pageId}`);
+                            
+                            if (enhancedSection && enhancedContentDiv) {
+                                enhancedContentDiv.textContent = enhancedContent;
+                                enhancedSection.classList.remove('hidden');
+                            }
+                            
+                            console.log('✅ AI suggestions loaded');
+                        }
+                        
+                    } catch (error) {
+                        console.error('❌ Error getting suggestions:', error);
+                        alert('Failed to get suggestions. Please try again.');
+                    } finally {
+                        // Clear progress interval
+                        clearInterval(progressInterval);
+                        
+                        // Complete progress bar
+                        if (progressBar) progressBar.style.width = '100%';
+                        if (progressPercent) progressPercent.textContent = '100%';
+                        if (progressText) progressText.textContent = 'Complete!';
+                        
+                        // Hide progress bar after a short delay
+                        setTimeout(() => {
+                            if (progressContainer) progressContainer.classList.add('hidden');
+                            if (progressBar) progressBar.style.width = '0%';
+                        }, 500);
+                        
+                        // Re-enable button
+                        if (btn) {
+                            btn.disabled = false;
+                            btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                        }
+                    }
+                }
+                
+                // Render keywords in sidebar
+                function renderSidebarKeywords(pageId, keywords) {
+                    const container = document.getElementById(`sidebar-keywords-chips-${pageId}`);
+                    const section = document.getElementById(`sidebar-keywords-section-${pageId}`);
+                    
+                    if (!container || !section) return;
+                    
+                    // Compact keyword chips (RankBuildr style - smaller, tighter)
+                    container.innerHTML = keywords.map((kw, idx) => `
+                        <button 
+                            onclick="toggleSidebarKeyword(${pageId}, '${escapeAttr(kw)}')"
+                            id="sidebar-kw-${pageId}-${idx}"
+                            class="px-2 py-1 rounded-md text-xs font-medium transition-all bg-blue-500 text-white hover:bg-blue-600"
+                            data-keyword="${escapeAttr(kw)}">
+                            ${escapeHtmlLocal(kw)}
+                        </button>
+                    `).join('');
+                    
+                    section.classList.remove('hidden');
+                }
+                
+                // Toggle keyword selection in sidebar
+                function toggleSidebarKeyword(pageId, keyword) {
+                    const selected = selectedKeywordsCache[pageId] || [];
+                    const idx = selected.indexOf(keyword);
+                    
+                    if (idx > -1) {
+                        selected.splice(idx, 1);
+                    } else {
+                        selected.push(keyword);
+                    }
+                    
+                    selectedKeywordsCache[pageId] = selected;
+                    updateSidebarKeywordUI(pageId);
+                }
+                
+                // Update keyword chip UI in sidebar
+                function updateSidebarKeywordUI(pageId) {
+                    const selected = selectedKeywordsCache[pageId] || [];
+                    const container = document.getElementById(`sidebar-keywords-chips-${pageId}`);
+                    
+                    if (!container) return;
+                    
+                    // Compact keyword toggle styles
+                    container.querySelectorAll('button').forEach(btn => {
+                        const keyword = btn.dataset.keyword;
+                        if (selected.includes(keyword)) {
+                            btn.className = 'px-2 py-1 rounded-md text-xs font-medium transition-all bg-blue-500 text-white hover:bg-blue-600';
+                        } else {
+                            btn.className = 'px-2 py-1 rounded-md text-xs font-medium transition-all bg-gray-200 text-gray-600 hover:bg-gray-300';
+                        }
+                    });
+                }
+                
+                // Process again with selected keywords
+                function processAgainBlock(pageId) {
+                    const selected = selectedKeywordsCache[pageId] || [];
+                    console.log('🔄 Process again with keywords:', selected);
+                    // Will call backend with selected keywords in Phase 2
+                    alert('Process Again will be implemented in Phase 2');
+                }
+                
+                // Apply block optimization (REAL - saves to WordPress)
+                async function applyBlockOptimization(pageId) {
+                    const blockId = currentEditingBlock[pageId];
+                    if (!blockId) return;
+                    
+                    const suggestion = pageSuggestionsCache[pageId]?.[blockId];
+                    if (!suggestion) {
+                        alert('No suggestions to apply');
+                        return;
+                    }
+                    
+                    // Show loading state
+                    const applyBtn = document.getElementById(`sidebar-apply-${pageId}`);
+                    if (applyBtn) {
+                        applyBtn.disabled = true;
+                        applyBtn.innerHTML = '<svg class="animate-spin w-3 h-3 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Applying...';
+                    }
+                    
+                    try {
+                        // For meta blocks, use new update_meta_data endpoint with SEO score calculation
+                        if (blockId === 'meta-title' || blockId === 'meta-description') {
+                            const field = blockId.replace('meta-', '');
+                            const response = await fetch('<?php echo admin_url('admin-ajax.php'); ?>', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                                body: new URLSearchParams({
+                                    action: 'update_meta_data',
+                                    page_id: pageId,
+                                    field: field,
+                                    value: suggestion.enhanced_content,
+                                    nonce: '<?php echo wp_create_nonce('seo_optimizer_meta_nonce'); ?>'
+                                })
+                            });
+                            
+                            const result = await response.json();
+                            
+                            if (result.success) {
+                                console.log('✅ Meta data updated:', result.data);
+                                
+                                // Extract real SEO score from backend
+                                const newSeoScore = result.data.new_seo_score || 100;
+                                
+                                // Show success with score
+                                alert(`✅ ${suggestion.block_type} updated successfully!\n\n📊 New SEO Score: ${newSeoScore}/100\n📏 Length: ${result.data.value_length} characters`);
+                                
+                                // ⭐ REAL-TIME PREVIEW UPDATE - Update block preview text immediately
+                                const previewDiv = document.getElementById(`block-preview-${pageId}-${blockId}`);
+                                if (previewDiv) {
+                                    const previewText = suggestion.enhanced_content.length > 100 
+                                        ? suggestion.enhanced_content.substring(0, 100) + '...' 
+                                        : suggestion.enhanced_content;
+                                    previewDiv.innerHTML = `<p class="text-xs text-gray-700 leading-relaxed">${escapeHtmlLocal(previewText)}</p>`;
+                                    // Auto-expand to show the updated content
+                                    previewDiv.classList.remove('hidden');
+                                }
+                                
+                                // Update block status in UI based on real score
+                                const blockCard = document.querySelector(`[data-block-id="${blockId}"]`);
+                                if (blockCard) {
+                                    const statusSpan = blockCard.querySelector('.text-green-600, .text-orange-600, .text-gray-400, .text-red-600');
+                                    if (statusSpan) {
+                                        if (newSeoScore >= 80) {
+                                            statusSpan.className = 'text-green-600 text-xs font-medium';
+                                            statusSpan.textContent = 'Optimized';
+                                        } else if (newSeoScore >= 50) {
+                                            statusSpan.className = 'text-orange-600 text-xs font-medium';
+                                            statusSpan.textContent = 'In Progress';
+                                        } else {
+                                            statusSpan.className = 'text-red-600 text-xs font-medium';
+                                            statusSpan.textContent = 'Needs Review';
+                                        }
+                                    }
+                                }
+                                
+                                // Update SEO score badge with REAL score from backend
+                                const blockData = pageBlocksCache[pageId]?.blocks.find(b => b.block_id === blockId);
+                                if (blockData) {
+                                    blockData.seo_score = newSeoScore;
+                                    blockData.status = newSeoScore >= 80 ? 'optimized' : (newSeoScore >= 50 ? 'needs_optimization' : 'not_optimized');
+                                    
+                                    // Update visual badge
+                                    const badge = blockCard?.querySelector('.bg-green-100, .bg-orange-100, .bg-red-100');
+                                    if (badge) {
+                                        if (newSeoScore >= 80) {
+                                            badge.className = 'text-xs font-medium px-2 py-1 rounded bg-green-100 text-green-700';
+                                        } else if (newSeoScore >= 50) {
+                                            badge.className = 'text-xs font-medium px-2 py-1 rounded bg-orange-100 text-orange-700';
+                                        } else {
+                                            badge.className = 'text-xs font-medium px-2 py-1 rounded bg-red-100 text-red-700';
+                                        }
+                                        badge.textContent = newSeoScore + '/100';
+                                    }
+                                }
+                                
+                                // Close sidebar
+                                closeSidebar(pageId);
+                            } else {
+                                throw new Error(result.data || 'Save failed');
+                            }
+                        } else {
+                            // TODO: Content blocks - Phase 2 Backend Implementation
+                            // When implementing: Update block preview in real-time just like meta blocks above
+                            // 1. Save enhanced content to WordPress via AJAX
+                            // 2. Update preview div with new content: document.getElementById(`block-preview-${pageId}-${blockId}`)
+                            // 3. Update status to "✓ Optimized"
+                            // 4. Update SEO score badge to 100/100
+                            // 5. Auto-expand preview to show changes
+                            alert('Content block optimization will be implemented in Phase 2');
+                        }
+                        
+                    } catch (error) {
+                        console.error('❌ Error applying optimization:', error);
+                        alert('Failed to apply changes: ' + error.message);
+                    }
+                }
                 
                 // Get Suggestions - Main entry point (CONNECTED TO REAL BACKEND)
                 async function getSuggestions(pageId) {
@@ -3183,6 +4131,263 @@ class SEO_Optimizer {
     }
     
     /**
+     * Parse Gutenberg blocks from post content
+     * Returns structured array of all content blocks
+     */
+    public function parse_page_blocks($post_id) {
+        $post = get_post($post_id);
+        if (!$post) {
+            return array();
+        }
+        
+        $blocks = parse_blocks($post->post_content);
+        $structured_blocks = array();
+        
+        // Counters for block IDs
+        $h1_count = 0;
+        $h2_count = 0;
+        $h3_count = 0;
+        $p_count = 0;
+        $button_count = 0;
+        $image_count = 0;
+        
+        // Add meta blocks first (always included)
+        $meta_title = get_post_meta($post_id, '_yoast_wpseo_title', true) ?: get_the_title($post_id);
+        $meta_desc = get_post_meta($post_id, '_yoast_wpseo_metadesc', true) ?: '';
+        $meta_keywords = get_post_meta($post_id, '_yoast_wpseo_focuskw', true) ?: '';
+        
+        // Calculate SEO score for meta title
+        $title_length = strlen($meta_title);
+        $title_seo_score = 0;
+        if ($title_length >= 50 && $title_length <= 60) {
+            $title_seo_score = 100;
+        } elseif ($title_length >= 40 && $title_length <= 70) {
+            $title_seo_score = 80;
+        } elseif ($title_length > 0) {
+            $title_seo_score = 50;
+        }
+        
+        $structured_blocks[] = array(
+            'block_id' => 'meta-title',
+            'block_type' => 'Meta Title',
+            'block_category' => 'meta',
+            'current_content' => $meta_title,
+            'char_count' => strlen($meta_title),
+            'seo_score' => $title_seo_score,
+            'status' => $title_seo_score >= 80 ? 'optimized' : ($title_seo_score >= 50 ? 'needs_optimization' : 'not_optimized'),
+            'editable' => true,
+            'priority' => 1
+        );
+        
+        // Calculate SEO score for meta description
+        $desc_length = strlen($meta_desc);
+        $desc_seo_score = 0;
+        if ($desc_length >= 150 && $desc_length <= 160) {
+            $desc_seo_score = 100;
+        } elseif ($desc_length >= 120 && $desc_length <= 170) {
+            $desc_seo_score = 80;
+        } elseif ($desc_length > 0) {
+            $desc_seo_score = 50;
+        }
+        
+        $structured_blocks[] = array(
+            'block_id' => 'meta-description',
+            'block_type' => 'Meta Description',
+            'block_category' => 'meta',
+            'current_content' => $meta_desc,
+            'char_count' => strlen($meta_desc),
+            'seo_score' => $desc_seo_score,
+            'status' => $desc_seo_score >= 80 ? 'optimized' : ($desc_seo_score >= 50 ? 'needs_optimization' : 'not_optimized'),
+            'editable' => true,
+            'priority' => 1
+        );
+        
+        if (!empty($meta_keywords)) {
+            $structured_blocks[] = array(
+                'block_id' => 'meta-keywords',
+                'block_type' => 'Meta Keywords',
+                'block_category' => 'meta',
+                'current_content' => $meta_keywords,
+                'char_count' => strlen($meta_keywords),
+                'status' => 'optimized',
+                'editable' => false,
+                'priority' => 1
+            );
+        }
+        
+        // Parse Gutenberg blocks
+        foreach ($blocks as $block) {
+            if (empty($block['blockName'])) {
+                continue;
+            }
+            
+            $block_html = isset($block['innerHTML']) ? $block['innerHTML'] : '';
+            $stripped_content = wp_strip_all_tags($block_html);
+            
+            // Skip empty blocks
+            if (empty(trim($stripped_content))) {
+                continue;
+            }
+            
+            switch ($block['blockName']) {
+                case 'core/heading':
+                    $level = isset($block['attrs']['level']) ? $block['attrs']['level'] : 2;
+                    
+                    if ($level == 1) {
+                        $h1_count++;
+                        $structured_blocks[] = array(
+                            'block_id' => 'h1-' . $h1_count,
+                            'block_type' => 'H1',
+                            'block_category' => 'content',
+                            'current_content' => trim($stripped_content),
+                            'char_count' => strlen($stripped_content),
+                            'status' => 'not_optimized',
+                            'editable' => true,
+                            'priority' => 1
+                        );
+                    } elseif ($level == 2) {
+                        $h2_count++;
+                        $structured_blocks[] = array(
+                            'block_id' => 'h2-' . $h2_count,
+                            'block_type' => 'H2',
+                            'block_category' => 'content',
+                            'current_content' => trim($stripped_content),
+                            'char_count' => strlen($stripped_content),
+                            'status' => 'not_optimized',
+                            'editable' => true,
+                            'priority' => 2
+                        );
+                    } elseif ($level == 3) {
+                        $h3_count++;
+                        $structured_blocks[] = array(
+                            'block_id' => 'h3-' . $h3_count,
+                            'block_type' => 'H3',
+                            'block_category' => 'content',
+                            'current_content' => trim($stripped_content),
+                            'char_count' => strlen($stripped_content),
+                            'status' => 'not_optimized',
+                            'editable' => true,
+                            'priority' => 2
+                        );
+                    }
+                    break;
+                
+                case 'core/paragraph':
+                    if (strlen($stripped_content) > 20) {
+                        $p_count++;
+                        $structured_blocks[] = array(
+                            'block_id' => 'paragraph-' . $p_count,
+                            'block_type' => 'Paragraph',
+                            'block_category' => 'content',
+                            'current_content' => trim($stripped_content),
+                            'char_count' => strlen($stripped_content),
+                            'status' => 'not_optimized',
+                            'editable' => true,
+                            'priority' => 2
+                        );
+                    }
+                    break;
+                
+                case 'core/button':
+                case 'core/buttons':
+                    $button_count++;
+                    $structured_blocks[] = array(
+                        'block_id' => 'button-' . $button_count,
+                        'block_type' => 'Button',
+                        'block_category' => 'cta',
+                        'current_content' => trim($stripped_content),
+                        'char_count' => strlen($stripped_content),
+                        'status' => 'not_optimized',
+                        'editable' => true,
+                        'priority' => 2
+                    );
+                    break;
+                
+                case 'core/image':
+                    $image_count++;
+                    $image_id = isset($block['attrs']['id']) ? $block['attrs']['id'] : 0;
+                    $alt_text = '';
+                    $image_url = '';
+                    
+                    if ($image_id) {
+                        $alt_text = get_post_meta($image_id, '_wp_attachment_image_alt', true);
+                        $image_url = wp_get_attachment_image_url($image_id, 'thumbnail');
+                    }
+                    
+                    $structured_blocks[] = array(
+                        'block_id' => 'image-' . $image_count,
+                        'block_type' => 'Image',
+                        'block_category' => 'media',
+                        'current_content' => $alt_text,
+                        'thumbnail_url' => $image_url,
+                        'char_count' => strlen($alt_text),
+                        'status' => !empty($alt_text) ? 'optimized' : 'needs_optimization',
+                        'editable' => false, // Phase 2
+                        'priority' => 3
+                    );
+                    break;
+            }
+        }
+        
+        return $structured_blocks;
+    }
+    
+    /**
+     * AJAX handler to get full page preview data (blocks + meta)
+     * This is the NEW endpoint for the block list UI
+     */
+    public function ajax_get_page_full_preview() {
+        // Verify nonce
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'seo_optimizer_meta_nonce')) {
+            wp_send_json_error('Security check failed');
+        }
+        
+        // Check user capabilities
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Insufficient permissions');
+        }
+        
+        $page_id = intval($_POST['page_id']);
+        
+        if (!$page_id) {
+            wp_send_json_error('Invalid page ID');
+        }
+        
+        // Get post data
+        $post = get_post($page_id);
+        
+        if (!$post) {
+            wp_send_json_error('Page not found');
+        }
+        
+        // Parse all blocks
+        $blocks = $this->parse_page_blocks($page_id);
+        
+        // Calculate stats
+        $total_blocks = count($blocks);
+        $optimized = count(array_filter($blocks, function($b) { return $b['status'] === 'optimized'; }));
+        $needs_optimization = count(array_filter($blocks, function($b) { return $b['status'] === 'needs_optimization'; }));
+        $not_optimized = count(array_filter($blocks, function($b) { return $b['status'] === 'not_optimized'; }));
+        
+        // Return structured data (FUTURE-PROOF FORMAT)
+        wp_send_json_success(array(
+            'page_id' => $page_id,
+            'page_title' => $post->post_title,
+            'page_url' => get_permalink($page_id),
+            'page_type' => $post->post_type,
+            'blocks' => $blocks,
+            'html_content' => $post->post_content, // For AI processing
+            'stats' => array(
+                'total_blocks' => $total_blocks,
+                'optimized' => $optimized,
+                'needs_optimization' => $needs_optimization,
+                'not_optimized' => $not_optimized,
+                'editable' => count(array_filter($blocks, function($b) { return $b['editable']; }))
+            )
+        ));
+    }
+    
+    /**
      * AJAX handler to get page meta data and recommendations
      */
     public function ajax_get_page_meta_data() {
@@ -3277,6 +4482,70 @@ class SEO_Optimizer {
         }
         
         wp_send_json_success(__('Recommendation applied successfully', 'seo-optimizer'));
+    }
+    
+    /**
+     * AJAX handler to update meta data (for sidebar Apply button)
+     */
+    public function ajax_update_meta_data() {
+        // Verify nonce
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'seo_optimizer_meta_nonce')) {
+            wp_send_json_error('Security check failed');
+        }
+        
+        // Check user capabilities
+        if (!current_user_can('edit_posts')) {
+            wp_send_json_error('Insufficient permissions');
+        }
+        
+        $page_id = intval($_POST['page_id']);
+        $field = sanitize_text_field($_POST['field']);
+        $value = sanitize_textarea_field($_POST['value']);
+        
+        if (!$page_id || !$field || !$value) {
+            wp_send_json_error('Invalid parameters');
+        }
+        
+        // Check if user can edit this specific post
+        if (!current_user_can('edit_post', $page_id)) {
+            wp_send_json_error('Cannot edit this post');
+        }
+        
+        // Update based on field type
+        switch ($field) {
+            case 'title':
+            case 'meta-title':
+                update_post_meta($page_id, '_yoast_wpseo_title', $value);
+                $this->log_error('Updated meta title', array('post_id' => $page_id, 'length' => strlen($value)));
+                break;
+            case 'description':
+            case 'meta-description':
+                update_post_meta($page_id, '_yoast_wpseo_metadesc', $value);
+                $this->log_error('Updated meta description', array('post_id' => $page_id, 'length' => strlen($value)));
+                break;
+            case 'keywords':
+            case 'meta-keywords':
+                update_post_meta($page_id, '_yoast_wpseo_focuskw', $value);
+                $this->log_error('Updated meta keywords', array('post_id' => $page_id));
+                break;
+            default:
+                wp_send_json_error('Invalid field type: ' . $field);
+        }
+        
+        // Calculate new SEO score
+        $meta_title = get_post_meta($page_id, '_yoast_wpseo_title', true) ?: get_the_title($page_id);
+        $meta_desc = get_post_meta($page_id, '_yoast_wpseo_metadesc', true) ?: '';
+        $meta_keywords = get_post_meta($page_id, '_yoast_wpseo_focuskw', true) ?: '';
+        
+        $keywords_array = !empty($meta_keywords) ? explode(',', $meta_keywords) : array();
+        $new_seo_score = $this->calculate_seo_score($meta_title, $meta_desc, $keywords_array);
+        
+        wp_send_json_success(array(
+            'message' => 'Meta data updated successfully',
+            'new_seo_score' => $new_seo_score,
+            'field' => $field,
+            'value_length' => strlen($value)
+        ));
     }
     
     /**
